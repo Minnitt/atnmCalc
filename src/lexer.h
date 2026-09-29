@@ -46,10 +46,9 @@ struct Token {
 };
 
 class Lexer {
-
-    std::vector<Token> tokenise(const std::string &source);
-
     static CommandType getCommandType(const std::string &source);
+public:
+    static std::vector<Token> tokenise(const std::string &source);
 };
 
 

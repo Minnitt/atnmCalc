@@ -43,7 +43,6 @@ add_executable(atnmCalc
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
         src/lexer.cpp
-        src/lexer.h
 )
 
 target_include_directories(atnmCalc PRIVATE
@@ -52,3 +51,24 @@ target_include_directories(atnmCalc PRIVATE
 )
 
 target_link_libraries(atnmCalc PRIVATE glfw OpenGL::GL)
+
+#tests------------------
+#gtest
+#testing library
+
+FetchContent_Declare(
+        googletest
+        GIT_REPOSITORY https://github.com/google/googletest.git
+        GIT_TAG        v1.15.2
+)
+
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(googletest)
+
+add_executable(lexerTests
+        src/lexer.cpp
+        src/tests/lexerTesting.cpp
+)
+
+target_link_libraries(lexerTests PRIVATE gtest_main)

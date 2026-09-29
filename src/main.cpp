@@ -15,7 +15,7 @@ static void GlfwErrorCallback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
 
-int main() {
+int GUIApp() {
     glfwSetErrorCallback(GlfwErrorCallback);
     if (!glfwInit()) return 1;
 
@@ -66,4 +66,8 @@ int main() {
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
+}
+
+int main() {
+    return GUIApp();
 }

@@ -17,9 +17,10 @@ std::vector<Token> Lexer::tokenise(const std::string &source) {
 
         if (std::isspace(c)) {
             index++;
+            continue;
         }
         else if (c == '.' || std::isdigit(c)) {
-            std::size_t startingIndex = index;
+            std::size_t consumed = 0;
             token.type = TokenType::NUMBER;
             std::string number{};
             while (c == '.' || std::isdigit(c)) {
@@ -28,8 +29,8 @@ std::vector<Token> Lexer::tokenise(const std::string &source) {
                 c = source[index];
             }
 
-            double value = std::stod(number); //if the input is just '.', std::invalid_argument will be thrown
-            if (index - startingIndex != std::to_string(value).length()) {
+            double value = std::stod(number, &consumed); //if the input is just '.', std::invalid_argument will be thrown
+            if (consumed != number.size()) {
                 throw std::invalid_argument("malformed number '" + number + "'");
             }
             token.value = value;
