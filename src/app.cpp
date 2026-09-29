@@ -59,28 +59,44 @@ void App::DrawRow(Row& row) {
     if (row.dirty) ReparseAndEvaluate(row);
 
     const float resultWidth = 170.0f;
-    const float rowHeight = 160.0f;
+    const float previewFontSize = ImGui::GetFontSize() * 1.8f; // bumped up — was too small for stacked exponents
+    const float resultFontSize = ImGui::GetFontSize() * 2.0f;
+    const float previewPadding = 16.0f;   // vertical breathing room inside the preview box
+    const float minPreviewHeight = 55.0f;
+    const float variablesHeight = 60.0f;
+    const float spacing = ImGui::GetStyle().ItemSpacing.y;
 
-    ImGui::BeginChild("left", ImVec2(-resultWidth - 8.0f, rowHeight), false);
+    // Size the preview box to whatever the equation actually needs, rather
+    // than a fixed guess — this is what removes the scrollbar/clipping on
+    // tall content like nested fractions or stacked exponents.
+    float previewHeight = minPreviewHeight;
+    if (!row.input.empty() && row.parseResult.success) {
+        ImVec2 eqSize = MeasureEquation(row.parseResult.root, previewFontSize);
+        previewHeight = std::max(minPreviewHeight, eqSize.y + previewPadding);
+    }
+    float leftWidth = ImGui::GetContentRegionAvail().x - resultWidth - 8.0f;
+    float totalHeight = previewHeight + spacing + variablesHeight;
+
+    // BeginGroup (rather than a fixed-size BeginChild) so this container
+    // doesn't need to guess its own height up front — it just wraps
+    // whatever height the preview+vars children end up being.
+    ImGui::BeginGroup();
     {
-        // Rendered equation preview
-        ImGui::BeginChild("preview", ImVec2(0, 70), true);
+        ImGui::BeginChild("preview", ImVec2(leftWidth, previewHeight), true, ImGuiWindowFlags_NoScrollbar);
         if (row.input.empty()) {
             ImGui::TextDisabled("(rendered equation appears here)");
         } else if (!row.parseResult.success) {
             ImGui::TextColored(ImVec4(0.85f, 0.3f, 0.3f, 1.0f), "%s", row.parseResult.errorMessage.c_str());
         } else {
-            float fontSize = ImGui::GetFontSize() * 1.3f;
             ImVec2 avail = ImGui::GetContentRegionAvail();
-            ImVec2 size = MeasureEquation(row.parseResult.root, fontSize);
+            ImVec2 size = MeasureEquation(row.parseResult.root, previewFontSize);
             ImGui::SetCursorPos(ImVec2(std::max(4.0f, (avail.x - size.x) * 0.5f),
                                         std::max(4.0f, (avail.y - size.y) * 0.5f)));
-            DrawEquation(row.parseResult.root, fontSize);
+            DrawEquation(row.parseResult.root, previewFontSize);
         }
         ImGui::EndChild();
 
-        // Variable definitions
-        ImGui::BeginChild("vars", ImVec2(0, 0), true);
+        ImGui::BeginChild("vars", ImVec2(leftWidth, variablesHeight), true);
         if (row.parseResult.success && !row.parseResult.variables.empty()) {
             ImGui::TextDisabled("Define variables:");
             for (const auto& name : row.parseResult.variables) {
@@ -98,12 +114,13 @@ void App::DrawRow(Row& row) {
         }
         ImGui::EndChild();
     }
-    ImGui::EndChild();
+    ImGui::EndGroup();
 
     ImGui::SameLine();
 
-    // Rendered solution
-    ImGui::BeginChild("result", ImVec2(resultWidth, rowHeight), true);
+    // Rendered solution — height matches the group above so the two sides
+    // of the row line up regardless of how tall the equation preview got.
+    ImGui::BeginChild("result", ImVec2(resultWidth, totalHeight), true);
     ImGui::TextDisabled("Result");
     ImGui::Separator();
     if (row.input.empty() || !row.parseResult.success) {
@@ -114,11 +131,10 @@ void App::DrawRow(Row& row) {
         // Reuse the same renderer for the answer, wrapped as a NumberNode,
         // so the result looks visually consistent with the equation above.
         ASTNodePtr resultNode = std::make_shared<NumberNode>(row.evalResult.value);
-        float fontSize = ImGui::GetFontSize() * 1.4f;
         ImVec2 avail = ImGui::GetContentRegionAvail();
-        ImVec2 size = MeasureEquation(resultNode, fontSize);
+        ImVec2 size = MeasureEquation(resultNode, resultFontSize);
         ImGui::SetCursorPos(ImVec2(std::max(4.0f, (avail.x - size.x) * 0.5f), ImGui::GetCursorPosY() + 12.0f));
-        DrawEquation(resultNode, fontSize);
+        DrawEquation(resultNode, resultFontSize);
     }
     ImGui::EndChild();
 

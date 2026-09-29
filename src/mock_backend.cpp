@@ -11,12 +11,28 @@
 // the same grammar we discussed:
 //
 //   expression := term (('+' | '-') term)*
-//   term       := factor (('*' | '/') factor)*
+//   term       := factor ( ('*' | '/') factor | factor )*
 //   factor     := unary ('^' factor)?
 //   unary      := '-' unary | atom
 //   atom       := NUMBER | IDENT | '(' expression ')'
 //               | '\frac' '{' expression '}' '{' expression '}'
 //               | '\sqrt' '{' expression '}'
+//
+// NOTE on IDENT and implicit multiplication (a deliberate grammar
+// decision, not an oversight — you may want to make a different choice
+// in your real backend, but document whichever you pick):
+//
+// Each letter is its OWN single-character variable ("xy" is the two
+// variables x and y, not one variable named "xy"), matching standard
+// math notation. That only makes sense combined with implicit
+// multiplication via juxtaposition: "xy" means x*y, "2x" means 2*x,
+// "2(x+1)" means 2*(x+1). See `term`'s trailing bare `factor` case
+// above, and atAtomStart() below.
+//
+// Implicit multiplication deliberately does NOT trigger between two
+// plain numbers separated only by whitespace — "2 3" is still a parse
+// error, not "2*3" — since that's ambiguous/almost certainly a typo in
+// a way "2x" is not. See atAtomStart()'s comment for the exact rule.
 
 #include "backend_interface.h"
 #include <cctype>
@@ -63,11 +79,26 @@ private:
 
     char peekChar() { skipSpace(); return pos_ < text_.size() ? text_[pos_] : '\0'; }
 
+    // Lookahead (does not consume): could the next token start a new atom
+    // via implicit multiplication, e.g. the 'x' in "2x" or the '(' in
+    // "2(x+1)"? Deliberately excludes digits/'.' — two adjacent number
+    // literals ("2 3") stay a parse error rather than silently becoming
+    // "2*3"; that combination is essentially always a typo, unlike "2x".
+    bool atAtomStart() {
+        size_t save = pos_;
+        skipSpace();
+        bool result = pos_ < text_.size() &&
+                      (std::isalpha((unsigned char)text_[pos_]) || text_[pos_] == '(' || text_[pos_] == '\\');
+        pos_ = save;
+        return result;
+    }
+
     ASTNodePtr parseTerm() {
         ASTNodePtr left = parseFactor();
         for (;;) {
             if (consume("*")) left = std::make_shared<BinaryOpNode>(BinOp::Mul, left, parseFactor());
             else if (consume("/")) left = std::make_shared<BinaryOpNode>(BinOp::Div, left, parseFactor());
+            else if (atAtomStart()) left = std::make_shared<BinaryOpNode>(BinOp::Mul, left, parseFactor());
             else return left;
         }
     }
@@ -116,10 +147,11 @@ private:
     }
 
     ASTNodePtr parseVariable() {
+        // One character = one variable ("xy" is x*y via implicit
+        // multiplication above, not a variable literally named "xy").
         skipSpace();
-        size_t start = pos_;
-        while (pos_ < text_.size() && std::isalpha((unsigned char)text_[pos_])) pos_++;
-        std::string name = text_.substr(start, pos_ - start);
+        std::string name(1, text_[pos_]);
+        pos_++;
         vars_.insert(name);
         return std::make_shared<VariableNode>(name);
     }

@@ -170,12 +170,18 @@ Box Measure(const ASTNodePtr& node, float fontSize, ImFont* font) {
             break;
         }
         case NodeType::Sqrt: {
+            // The radical sign is drawn as hand-drawn vector lines, not a
+            // text glyph (see Draw() below) — ImGui's default font doesn't
+            // contain U+221A ("√"), so a text glyph rendered as "?". Drawing
+            // it as lines also means it automatically scales to match
+            // whatever the radicand's height is (a tall nested fraction
+            // under a sqrt gets a tall radical, not a fixed-size one).
             auto* s = static_cast<SqrtNode*>(node.get());
             Box inner = Measure(s->radicand, fontSize, font);
-            ImVec2 radical = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, "\xE2\x88\x9A"); // U+221A
-            const float overbarGap = fontSize * 0.18f;
-            box.size.x = radical.x + fontSize * 0.08f + inner.size.x;
-            box.size.y = overbarGap + std::max(inner.size.y, radical.y);
+            const float overbarGap = fontSize * 0.18f; // room above the radicand for the tick + overbar
+            const float tickWidth = fontSize * 0.5f;
+            box.size.x = tickWidth + fontSize * 0.08f + inner.size.x;
+            box.size.y = overbarGap + inner.size.y;
             box.baseline = overbarGap + inner.baseline;
             break;
         }
@@ -266,17 +272,24 @@ void Draw(const ASTNodePtr& node, ImVec2 topLeft, float fontSize, ImFont* font, 
             auto* s = static_cast<SqrtNode*>(node.get());
             Box whole = Measure(node, fontSize, font);
             Box inner = Measure(s->radicand, fontSize, font);
-            ImVec2 radical = font->CalcTextSizeA(fontSize, FLT_MAX, 0.0f, "\xE2\x88\x9A");
+            const float tickWidth = fontSize * 0.5f;
+            const float thickness = std::max(1.0f, fontSize * 0.06f);
+            float H = whole.size.y; // tick spans the full height of tick-space + radicand
+
+            // Classic radical shape as 3 line segments: a short low tick,
+            // a steep rising stroke, then the horizontal overbar.
+            ImVec2 p0(topLeft.x, topLeft.y + H * 0.55f);
+            ImVec2 p1(topLeft.x + tickWidth * 0.30f, topLeft.y + H);
+            ImVec2 p2(topLeft.x + tickWidth * 0.55f, topLeft.y + H * 0.08f);
+            ImVec2 p3(topLeft.x + tickWidth, topLeft.y);
+            dl->AddLine(p0, p1, color, thickness);
+            dl->AddLine(p1, p2, color, thickness);
+            dl->AddLine(p2, p3, color, thickness);
+
+            float innerX = topLeft.x + tickWidth + fontSize * 0.08f;
+            dl->AddLine(p3, ImVec2(innerX + inner.size.x, topLeft.y), color, thickness); // overbar
+
             const float overbarGap = fontSize * 0.18f;
-
-            float radicalTop = topLeft.y + (whole.size.y - radical.y);
-            dl->AddText(font, fontSize, ImVec2(topLeft.x, radicalTop), color, "\xE2\x88\x9A");
-
-            float innerX = topLeft.x + radical.x + fontSize * 0.08f;
-            float overbarY = topLeft.y + overbarGap * 0.4f;
-            dl->AddLine(ImVec2(innerX, overbarY), ImVec2(innerX + inner.size.x, overbarY), color,
-                        std::max(1.0f, fontSize * 0.05f));
-
             Draw(s->radicand, ImVec2(innerX, topLeft.y + overbarGap), fontSize, font, dl, color);
             break;
         }

@@ -42,6 +42,8 @@ add_executable(atnmCalc
     ${imgui_SOURCE_DIR}/imgui_widgets.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+        src/lexer.cpp
+        src/lexer.h
 )
 
 target_include_directories(atnmCalc PRIVATE
