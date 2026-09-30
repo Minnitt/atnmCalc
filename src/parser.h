@@ -4,6 +4,7 @@
 
 #ifndef ATNMCALC_PARSER_H
 #define ATNMCALC_PARSER_H
+#include <set>
 #include <stack>
 #include <vector>
 
@@ -23,6 +24,8 @@ enum class OperatorType {
 class Parser {
     std::vector<Token> tokens;
     std::size_t pos = 0;
+
+    std::set<std::string> variableNames{};
 
     //give the current token
     [[nodiscard]] const Token& peek() const;
@@ -48,6 +51,8 @@ public:
     explicit Parser(std::vector<Token> tokens) : tokens(std::move(tokens)) {};
 
     ASTNodePtr parse();
+
+    std::set<std::string> getVariableNames();
 };
 
 

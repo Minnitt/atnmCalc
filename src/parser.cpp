@@ -33,6 +33,7 @@ ASTNodePtr Parser::parseExpression() {
                 case TokenType::VARIABLE: {
                     Token token = advance();
                     operands.push(std::make_shared<VariableNode>(std::string(1, token.name)));
+                    variableNames.insert(std::string(1, token.name));
                     expectOperand = false;
                     break;
                 }
@@ -255,5 +256,8 @@ OperatorType Parser::tokenTypeToOperatorType(const TokenType token) {
     }
 }
 
+std::set<std::string> Parser::getVariableNames() {
+    return variableNames;
+}
 
 
