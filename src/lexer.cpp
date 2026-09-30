@@ -19,7 +19,7 @@ std::vector<Token> Lexer::tokenise(const std::string &source) {
             index++;
             continue;
         }
-        else if (c == '.' || std::isdigit(c)) {
+        if (c == '.' || std::isdigit(c)) {
             std::size_t consumed = 0;
             token.type = TokenType::NUMBER;
             std::string number{};
@@ -68,13 +68,14 @@ std::vector<Token> Lexer::tokenise(const std::string &source) {
                 default:
                     throw std::invalid_argument(
                         std::string("Unknown character: '") + c + "' at " + std::to_string(index)
-                        );
+                    );
                     break;
             }
             index++;
         }
         tokens.push_back(token);
     }
+    tokens.push_back({TokenType::END, source.length()});
     return tokens;
 }
 

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.16)
 project(atnmCalc CXX)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 include(FetchContent)
@@ -43,6 +43,8 @@ add_executable(atnmCalc
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
         src/lexer.cpp
+        src/parser.cpp
+        src/parser.h
 )
 
 target_include_directories(atnmCalc PRIVATE
