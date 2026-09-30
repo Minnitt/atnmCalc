@@ -34,7 +34,7 @@ add_executable(atnmCalc
     src/main.cpp
     src/app.cpp
     src/ast_renderer.cpp
-    src/mock_backend.cpp   # TODO: remove once your real backend replaces this
+
 
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -45,6 +45,9 @@ add_executable(atnmCalc
         src/lexer.cpp
         src/parser.cpp
         src/parser.h
+        src/evaluator.cpp
+        src/evaluator.h
+        src/backend.cpp
 )
 
 target_include_directories(atnmCalc PRIVATE
@@ -82,3 +85,10 @@ add_executable(parserTests
 )
 
 target_link_libraries(parserTests PRIVATE gtest_main)
+add_executable(evaluatorTests
+        src/tests/evaluatorTesting.cpp
+        src/evaluator.cpp
+        src/lexer.cpp
+        src/parser.cpp
+)
+target_link_libraries(evaluatorTests PRIVATE gtest_main)
