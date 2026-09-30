@@ -161,8 +161,25 @@ bool Parser::isRightAssociative(const OperatorType op) {
 }
 
 ASTNodePtr Parser::applyTopOperator(std::stack<OperatorType>& operators, std::stack<ASTNodePtr>& operands) {
+    OperatorType op = operators.top();
+    operators.pop();
+
     ASTNodePtr result = nullptr;
-    switch (operators.top()) {
+
+    if (op == OperatorType::UNARY_MINUS) {
+        if (operands.empty()) {
+            throw std::invalid_argument("incomplete expression: missing operand for unary '-'");
+        }
+        ASTNodePtr operand = operands.top(); operands.pop();
+        return std::make_shared<UnaryMinusNode>(operand);
+    }
+
+    // every other OperatorType needs two operands
+    if (operands.size() < 2) {
+        throw std::invalid_argument("incomplete expression: missing operand for operator");
+    }
+
+    switch (op) {
         case OperatorType::PLUS: {
             ASTNodePtr right = operands.top(); operands.pop();
             ASTNodePtr left = operands.top(); operands.pop();
@@ -198,12 +215,6 @@ ASTNodePtr Parser::applyTopOperator(std::stack<OperatorType>& operators, std::st
             result = std::make_shared<BinaryOpNode>(BinOp::Mul, left, right);
             break;
         }
-        case OperatorType::UNARY_MINUS: {
-            ASTNodePtr operand = operands.top(); operands.pop();
-
-            result = std::make_shared<UnaryMinusNode>(operand);
-            break;
-        }
         case OperatorType::EXPONENT: {
             ASTNodePtr right = operands.top(); operands.pop();
             ASTNodePtr left = operands.top(); operands.pop();
@@ -212,7 +223,6 @@ ASTNodePtr Parser::applyTopOperator(std::stack<OperatorType>& operators, std::st
             break;
         }
     }
-    operators.pop();
     return result;
 }
 

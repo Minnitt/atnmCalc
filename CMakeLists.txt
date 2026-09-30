@@ -74,3 +74,11 @@ add_executable(lexerTests
 )
 
 target_link_libraries(lexerTests PRIVATE gtest_main)
+
+add_executable(parserTests
+        src/lexer.cpp
+        src/tests/parserTesting.cpp
+        src/parser.cpp
+)
+
+target_link_libraries(parserTests PRIVATE gtest_main)
