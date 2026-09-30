@@ -93,7 +93,6 @@ ASTNodePtr Parser::parseExpression() {
                     expectOperand = true;
                     break;
                 }
-                case TokenType::NUMBER:
                 case TokenType::VARIABLE:
                 case TokenType::LPAREN:
                 case TokenType::FRAC:
