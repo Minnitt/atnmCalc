@@ -8,9 +8,9 @@
 #include "parser.h"
 
 ParseResult parseLatex(const std::string& latex) {
-    Parser parser{Lexer::tokenise(latex)};
     ParseResult result;
     try {
+        Parser parser = Parser(Lexer::tokenise(latex));
         ASTNodePtr root = parser.parse();
         std::set<std::string> variables = parser.getVariableNames();
         result.success = true;
@@ -21,7 +21,6 @@ ParseResult parseLatex(const std::string& latex) {
         result.success = false;
         result.errorMessage = e.what();
     }
-
     return result;
 }
 
