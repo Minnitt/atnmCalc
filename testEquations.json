@@ -1,0 +1,124 @@
+[
+  {
+    "input": "2 + 3 * 4",
+    "title": "Basic precedence",
+    "variables": {}
+  },
+  {
+    "input": "(2 + 3) * 4",
+    "title": "Parentheses override precedence",
+    "variables": {}
+  },
+  {
+    "input": "10 - 2 - 3",
+    "title": "Left-associative subtraction",
+    "variables": {}
+  },
+  {
+    "input": "2^3^2",
+    "title": "Right-associative exponent",
+    "variables": {}
+  },
+  {
+    "input": "2^-1",
+    "title": "Negative exponent",
+    "variables": {}
+  },
+  {
+    "input": "-2^2",
+    "title": "Unary minus vs exponent",
+    "variables": {}
+  },
+  {
+    "input": "\\frac{1}{2}",
+    "title": "Simple fraction",
+    "variables": {}
+  },
+  {
+    "input": "\\frac{\\frac{1}{2}}{\\frac{1}{4}}",
+    "title": "Nested fraction",
+    "variables": {}
+  },
+  {
+    "input": "\\sqrt{9}",
+    "title": "Square root",
+    "variables": {}
+  },
+  {
+    "input": "\\sqrt{\\frac{5*62}{3}}",
+    "title": "Sqrt of a fraction with multiplication",
+    "variables": {}
+  },
+  {
+    "input": "--5",
+    "title": "Chained unary minus",
+    "variables": {}
+  },
+  {
+    "input": "x + 1",
+    "title": "Single variable",
+    "variables": {
+      "x": 5.0
+    }
+  },
+  {
+    "input": "xy",
+    "title": "Implicit multiplication of variables",
+    "variables": {
+      "x": 3.0,
+      "y": 4.0
+    }
+  },
+  {
+    "input": "2x",
+    "title": "Number next to a variable",
+    "variables": {
+      "x": 5.0
+    }
+  },
+  {
+    "input": "\\frac{x}{2} + 1",
+    "title": "Variable inside a fraction",
+    "variables": {
+      "x": 10.0
+    }
+  },
+  {
+    "input": "xyasdfasdcawefsaf",
+    "title": "lmao",
+    "variables": {
+      "a": 1.0,
+      "c": 1.0,
+      "d": 1.0,
+      "e": 1.0,
+      "f": 1.0,
+      "s": 1.0,
+      "w": 1.0,
+      "x": 1.0,
+      "y": 1.0
+    }
+  },
+  {
+    "input": "  2 + 3  ",
+    "title": "Whitespace shouldn't matter",
+    "variables": {}
+  },
+  {
+    "input": "1/0",
+    "title": "Error case: division by zero",
+    "variables": {}
+  },
+  {
+    "input": "\\sqrt{-1}",
+    "title": "Error case: sqrt of a negative number",
+    "variables": {}
+  },
+  {
+    "input": "x + y",
+    "title": "Error case: unbound variable",
+    "variables": {
+      "x": 5.0,
+      "y": 0.0
+    }
+  }
+]
