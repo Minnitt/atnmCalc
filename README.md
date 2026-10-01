@@ -1,16 +1,55 @@
-# atnmCalc — GUI scaffold
+# atnmCalc
 
-## What's here
+A LaTeX equation calculator with a GUI, built for Advanced Algorithms
+Assignment 1. Type an equation in LaTeX (`\frac{1}{2} + \sqrt{9}`), define
+any variables it uses, see it rendered as proper math notation (fraction
+bars, radicals, superscripts) and evaluated live.
 
-| File | What it does | Who owns it |
-|---|---|---|
-| `src/ast.h` | Shared AST node types (`NumberNode`, `FracNode`, etc.) | **Contract** — both sides use this |
-| `src/backend_interface.h` | `parseLatex()` / `evaluateAst()` signatures | **Contract** — both sides use this |
-| `src/mock_backend.cpp` | Throwaway placeholder implementing the interface | **Delete once you have a real backend** |
-| `src/ast_renderer.h/.cpp` | Draws an AST as fraction bars / radicals / superscripts | GUI |
-| `src/app.h/.cpp` | The row-based UI (matches the wireframe) | GUI |
-| `src/main.cpp` | Window setup, frame loop | GUI |
-| `CMakeLists.txt` | Build config (fetches GLFW + Dear ImGui automatically) | GUI |
+## Architecture
+
+```
+LaTeX string --> [Lexer] --> tokens --> [Parser] --> AST --> [Evaluator] --> double
+                                                        |
+                                                        +--> [Renderer] --> drawn equation
+```
+
+The `ASTNode` tree (`ast.h`) is the shared contract between everything
+downstream of parsing: the evaluator walks it to compute a number, and
+the GUI's renderer walks the *same* tree to draw it. Neither one needs
+to know how the tree was built.
+
+## Algorithm
+
+The parser is a hybrid: **shunting-yard**'s operator-precedence
+mechanism (an operand stack, an operator stack, precedence/associativity
+comparisons) resolves the flat arithmetic (`+ - * / ^`), while `(`,
+`\frac{`, and `\sqrt{` each trigger a **recursive** call back into the
+same parsing function to handle their bracketed sub-expressions —
+something classical shunting-yard alone has no mechanism for, since it
+was designed for flat infix expressions with no grouping structure
+beyond plain parentheses. Rather than emitting an intermediate postfix
+(RPN) token sequence as the textbook algorithm does, operators are
+resolved directly into `ASTNode`s the moment they're popped, since the
+GUI needs the tree, not a flat notation for it.
+
+## Project layout
+
+| File | What it does |
+|---|---|
+| `src/lexer.h` / `.cpp` | Tokenizes a LaTeX string into a `vector<Token>`, terminated by an `END` sentinel |
+| `src/parser.h` / `.cpp` | Shunting-yard + recursion hybrid; `vector<Token>` -> `ASTNodePtr` |
+| `src/evaluator.h` / `.cpp` | Recursive tree walk; `ASTNodePtr` + variable map -> `double` |
+| `src/ast.h` | Shared AST node types (`NumberNode`, `BinaryOpNode`, `FracNode`, `SqrtNode`, etc.) — the contract between parsing, evaluation, and rendering |
+| `src/backend_interface.h` | `parseLatex()` / `evaluateAst()` signatures — what the GUI actually calls |
+| `src/backend.cpp` | Wires lexer -> parser -> evaluator together to implement `backend_interface.h` |
+| `src/ast_renderer.h` / `.cpp` | Draws an `ASTNode` tree as math notation: fraction bars, hand-drawn radicals, raised/shrunk exponents |
+| `src/app.h` / `.cpp` | The row-based UI — each row is an independent equation with an editable title, input, rendered preview, variable inputs, and result. Also owns the File menu, Settings/Preferences, UI scaling, and the resizable layout (see below) |
+| `src/main.cpp` | GLFW/OpenGL window setup and the ImGui frame loop; detects the monitor's content scale on first launch |
+| `src/tests/lexerTesting.cpp` | gtest suite for the lexer |
+| `src/tests/parserTesting.cpp` | gtest suite for the parser (tree shape + evaluated values, via a small test-only evaluator) |
+| `src/tests/evaluatorTesting.cpp` | gtest suite for the evaluator, run end-to-end through the real lexer + parser |
+| `testEquations.json` | Example equations file, in the app's own save format — covers every category from the test list plus a few deliberate error cases. Load via `File > Open` |
+| `CMakeLists.txt` | Build config — fetches GLFW, Dear ImGui, googletest, nlohmann/json, and tinyfiledialogs automatically |
 
 ## Building
 
@@ -20,48 +59,162 @@ cmake --build build -j
 ./build/atnmCalc
 ```
 
-First configure will take a minute — it's downloading GLFW and Dear ImGui
-via `FetchContent`. No manual vendoring needed. Needs a C++17 compiler,
-CMake ≥ 3.16, and (on Linux) X11 + OpenGL dev headers:
+First configure will take a minute — it's downloading GLFW, Dear ImGui,
+googletest, nlohmann/json, and tinyfiledialogs via `FetchContent`. No
+manual vendoring needed. Requires a C++20 **and** C compiler (tinyfiledialogs
+is plain C), CMake >= 3.16, and (on Linux) X11 + OpenGL dev headers:
 
 ```
 sudo apt install libgl1-mesa-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
 ```
 
-## Swapping in your real backend
+## Testing
 
-1. Delete `src/mock_backend.cpp`.
-2. Remove that line from `CMakeLists.txt`'s `add_executable(...)` list.
-3. Add your own source file(s) implementing the two functions declared in
-   `backend_interface.h`:
-   ```cpp
-   ParseResult parseLatex(const std::string& latex);
-   EvalResult evaluateAst(const ASTNodePtr& root, const std::map<std::string, double>& variables);
-   ```
-   Your parser should build trees out of the node types in `ast.h`
-   (`NumberNode`, `VariableNode`, `BinaryOpNode`, `UnaryMinusNode`,
-   `FracNode`, `SqrtNode`) — that's the only thing the renderer needs to
-   know how to draw. Everything else about how you tokenize/parse is
-   entirely up to you.
-4. Add those source files to `CMakeLists.txt` in place of `mock_backend.cpp`.
-5. Rebuild. The GUI, renderer, and variable-input logic don't need to change at all.
+Three separate gtest executables, one per backend component, each built
+from exactly the source files it actually exercises:
+
+```
+cmake --build build --target lexerTests parserTests evaluatorTests -j
+./build/lexerTests
+./build/parserTests
+./build/evaluatorTests
+```
+
+`evaluatorTests` in particular runs end-to-end through the real
+`Lexer` and `Parser` (not a mock), so it doubles as an integration check
+on the whole pipeline. None of these build or touch the GUI (`app.cpp`)
+at all.
+
+## GUI features
+
+- **File menu** — New, Open..., Save, Save As..., all using native OS file
+  dialogs (via tinyfiledialogs). Equations save as JSON (nlohmann/json):
+  an array of `{title, input, variables}`, where `variables` is a
+  name → value map, so variable values survive a save/reload round trip.
+  "Save" reuses whatever path was last opened/saved to in this session;
+  if none yet, it behaves like "Save As".
+- **Settings > Preferences** — a UI scale slider (0.5x–3x). Dragging only
+  commits the change (restyles the UI, resizes the Preferences window,
+  writes to `atnmcalc_settings.txt`) once you release the slider, not on
+  every frame mid-drag (`ImGui::IsItemDeactivatedAfterEdit()`), so the
+  window resizing mid-drag can't feed back into the slider's own position.
+  On a machine with no saved preference yet, the monitor's content scale
+  is used as the starting value (`main.cpp`, via
+  `glfwGetWindowContentScale`), so the app isn't tiny by default on a
+  HiDPI display — but never overrides a scale you've explicitly set.
+- **Editable row titles** — click the small title line above any equation
+  to rename it; shows "Equation N" as a greyed-out hint when empty.
+- **Resizable layout** — three drag handles per row: between the equation
+  preview and the variable inputs, between the equation column and the
+  Result panel, and one at the bottom of each row (which also serves as
+  the divider before the next row). All three are **shared across every
+  row** — dragging any one of them resizes every row identically, by
+  design, so rows can never end up inconsistently sized with each other.
+  Double-click any handle to reset it back to auto-fit.
+- **Horizontal scrolling** on the equation preview, for equations that
+  render wider than the box (long implicit-multiplication chains
+  especially). The variables panel instead **wraps to multiple lines**
+  rather than scrolling, since seeing/setting several values at once
+  matters more there than it does for a purely visual equation render.
+
+## Design decisions
+
+A few points where the grammar could reasonably have gone either way —
+documented here so the reasoning doesn't get lost, and so the report's
+"what I built" section has somewhere to draw from:
+
+- **Each letter is its own variable.** `xy` is the two variables `x` and
+  `y`, not one variable named `xy` — matching LaTeX math-mode convention,
+  where `xy` typesets as two adjacent italic symbols. Multi-letter names
+  would need `\text{...}` in real LaTeX, which isn't currently supported.
+- **Implicit multiplication via juxtaposition** — `2x`, `xy`, `2(x+1)`
+  all mean multiplication, since per-character variables only make sense
+  combined with this. It deliberately does **not** apply between two
+  bare numbers: `2 3` is a parse error, not `2*3`, since that combination
+  is essentially always a typo, unlike `2x`.
+- **Unary minus binds looser than `^`**: `-2^2` evaluates to `-4` (i.e.
+  `-(2^2)`), matching standard mathematical convention and most
+  calculators/languages (Python included). `(-2)^2` needs explicit
+  parentheses to get `4`.
+- **`\frac` vs `/`**: both mean division and evaluate identically, but
+  render differently — `\frac{a}{b}` draws as a stacked fraction with a
+  bar, while `a/b` draws as an inline slash. `FracNode` and
+  `BinaryOpNode(BinOp::Div, ...)` are kept as separate AST node types
+  specifically so the renderer can tell them apart.
 
 ## Extending the AST
 
-If you add LaTeX support your backend needs but the renderer doesn't
-know about yet (`\sin`, `\sum`, matrices, etc.):
+To add LaTeX support the renderer doesn't know about yet (`\sin`, `\sum`,
+matrices, etc.):
 1. Add a new node struct + `NodeType` enum value in `ast.h`.
-2. Add a `case` for it in both `Measure()` and `Draw()` in `ast_renderer.cpp`.
-3. Have your parser produce it.
+2. Add a `case` for it in the parser, the evaluator, and both
+   `Measure()`/`Draw()` in `ast_renderer.cpp`.
 
 ## Known simplifications (documented, not bugs)
 
 - Parentheses drawn around sub-expressions don't stretch vertically to
   match tall content (a nested fraction inside parens will look a bit
-  cramped) — real typesetting engines do this; this one doesn't.
+  cramped) — real typesetting engines do this; this one doesn't. The
+  radical sign *does* stretch to match its content's height, since it's
+  hand-drawn as line segments (see `ast_renderer.cpp`'s `Sqrt` case)
+  rather than a text glyph — ImGui's default font doesn't contain the
+  `√` character (U+221A) and silently falls back to `?` otherwise.
 - Nested fractions/roots don't shrink progressively in size the way
   real LaTeX does — every level renders at the same relative scale
   (except exponents, which do shrink).
-- `evaluateAst` in the mock backend throws C++ exceptions internally
-  and catches them at the top — fine for a stub, but consider whether
-  your real evaluator wants that style or an explicit error-return style instead.
+- The evaluator throws C++ exceptions internally and catches them once
+  at the `evaluateAst`/`evaluateAST` boundary, converting them into
+  `EvalResult`'s `success`/`errorMessage` fields — the recursive
+  tree-walk itself never has to thread error state through every call.
+
+## ImGui gotchas hit while building the GUI
+
+Worth keeping a record of these — each one caused a real, reproducible bug
+(one an actual crash), and the pattern is easy to reintroduce by accident
+if this code gets refactored later:
+
+- **`IsItemActive()` / `IsItemDeactivatedAfterEdit()` / `IsItemActivated()`
+  must be called immediately after the widget they refer to**, before any
+  other widget is drawn — even an innocuous `ImGui::TextDisabled(...)` in
+  between silently becomes the new "last item", and the query ends up
+  reporting on that instead. This caused the UI-scale slider to appear to
+  do nothing on release, for exactly this reason.
+- **A slider's bound value needs to persist across frames** (not be a
+  fresh local re-read from the committed value every frame) if you're
+  deferring the actual commit to release — the value the widget last
+  wrote, on the final frame before release, can otherwise get discarded
+  before the deactivation check ever reads it.
+- **Resizing a window from inside a drag handler using the raw per-frame
+  mouse delta drifts once the result gets clamped** — the cursor keeps
+  moving past the clamp boundary, so the next unclamp requires dragging
+  back through that entire dead zone first. Fix: record the value being
+  resized when the drag *starts* (`IsItemActivated()`), then apply the
+  *total* drag distance since then (`GetMouseDragDelta()`), not an
+  accumulating per-frame delta.
+- **`PushStyleVar`/`PopStyleVar` must not straddle a `Begin`/`End` (or
+  `BeginChild`/`EndChild`) pair asymmetrically** — pushing while "inside"
+  a child and popping "outside" after its `EndChild()` trips ImGui's own
+  debug assertion (`PushStyleVar/PopStyleVar Mismatch!`) and aborts the
+  program, because each window's style-stack size is checked for balance
+  between its own entry and exit. Achieving "zero gap after this child"
+  is done with plain cursor arithmetic (`SetCursorPosY(... - ItemSpacing.y)`)
+  instead, which never touches the style stack at all.
+- **`ImDrawList::AddText`'s explicit-font-size overload bypasses
+  `io.FontGlobalScale` entirely** — it draws at exactly the size you pass
+  in, unlike ImGui's normal text/widget rendering path. `ast_renderer.cpp`
+  and `app.cpp`'s `DrawRow` multiply their font sizes by `uiScale_`
+  directly for this reason, rather than relying on `FontGlobalScale` to
+  reach them.
+
+## Open items
+
+- `ParserDesignDecision.BareNumbersWithNoOperatorBetweenThem` in
+  `parserTesting.cpp` is currently `GTEST_SKIP()`-ed even though the
+  behaviour itself is decided and implemented (`2 3` throws) — swap it
+  for a real `EXPECT_THROW` assertion.
+- The resizable layout's shared heights/widths
+  (`sharedPreviewHeight_`, `sharedVarsHeight_`, `resultColumnWidth_`) and
+  UI scale (`uiScale_`) aren't unified into one settings mechanism — scale
+  persists to `atnmcalc_settings.txt`, the layout sizes don't persist at
+  all (reset to auto-fit each run). Worth folding the layout sizes into
+  the same settings file if you want them to survive a restart.
