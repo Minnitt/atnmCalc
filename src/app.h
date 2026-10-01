@@ -18,6 +18,15 @@ struct Row {
     ParseResult parseResult;              // result of parseLatex(input)
     std::map<std::string, double> varValues; // current value typed for each variable
     EvalResult evalResult;                // result of evaluateAst(...), recomputed on change
+
+    // This row's own dragged layout, stored UNSCALED (divided by uiScale_
+    // when set, multiplied back when used) so it follows UI scale changes.
+    // Negative means "auto-fit / default" -- a new row starts that way, and
+    // double-clicking one of this row's splitters resets it to that. Each
+    // row owns its own values, so resizing one row never affects another.
+    float previewHeight = -1.0f; // equation preview pane height
+    float varsHeight = -1.0f;    // variables pane height
+    float resultWidth = -1.0f;   // Result column width
 };
 
 class App {
@@ -53,15 +62,19 @@ private:
     void DrawPreferencesWindow();
 
     // Generic drag handle. vertical=true is a left/right handle (between
-    // columns); false is an up/down handle (between stacked panes). Returns
-    // true while being dragged, writing the TOTAL mouse movement since the
-    // drag began into *dragTotal (not per-frame delta -- that drifts once a
-    // caller clamps the resulting size, since the mouse keeps moving further
-    // than the clamped value allows). idleLine draws a thin divider line
-    // when the handle isn't hovered/active, for handles that double as a
-    // permanent visual divider (the row-bottom one) rather than staying
-    // fully invisible until moused over.
-    bool Splitter(const char* id, bool vertical, float length, bool idleLine, float* dragTotal);
+    // columns); false is an up/down handle (between stacked panes). `length`
+    // is the handle's extent along the divider, `thickness` its size across
+    // it (the caller owns that number, so the layout math and the drawn
+    // handle can never disagree). Returns true while being dragged, writing
+    // the TOTAL mouse movement since the drag began into *dragTotal (not
+    // per-frame delta -- that drifts once a caller clamps the resulting
+    // size, since the mouse keeps moving further than the clamped value
+    // allows). idleLineOffset >= 0 draws a thin divider line that far from
+    // the handle's start edge while it isn't hovered/active, for handles
+    // that double as a permanent visual divider (the row-bottom one);
+    // negative (the default) keeps the handle invisible until moused over.
+    bool Splitter(const char* id, bool vertical, float length, float thickness,
+                  float* dragTotal, float idleLineOffset = -1.0f);
 
     // The pane size(s) being resized at the moment a drag started. Only one
     // splitter can be dragged at a time (ImGui has one ActiveId), so a
@@ -69,22 +82,6 @@ private:
     ImVec2 dragStart_{};
 
     void SetUiScale(float scale); // clamps, applies to ImGui style/fonts, and persists
-
-    // User-draggable width of the Result column, shared across every row
-    // (one shared value, not per-row -- dragging any row's splitter resizes
-    // all of them together, the same way a file browser's sidebar width
-    // applies everywhere rather than per-folder). Initialized to a sensible
-    // default once uiScale_ is known, in the constructor.
-    float resultColumnWidth_ = 170.0f;
-
-    // Same sharing philosophy, applied to the other two splitters: dragging
-    // the preview/variables boundary or a row's bottom edge on ANY row
-    // affects every row identically, so rows can't end up looking
-    // inconsistent with each other (an empty row elsewhere staying small
-    // while one you happened to drag stays big). Negative means "auto-fit
-    // to content"; dragging either splitter switches to an explicit height.
-    float sharedPreviewHeight_ = -1.0f;
-    float sharedVarsHeight_ = -1.0f;
 
     void LoadSettings();
     void SaveSettings() const;

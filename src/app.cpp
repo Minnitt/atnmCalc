@@ -33,7 +33,6 @@ App::App() {
     if (hasSavedScale_) {
         SetUiScale(uiScale_); // re-apply the saved scale to the style/fonts now that we have it
     }
-    resultColumnWidth_ = 170.0f * uiScale_; // sensible starting point; user can drag it from here
 }
 
 void App::ApplySuggestedScaleIfUnset(float suggestedScale) {
@@ -203,8 +202,8 @@ void App::ReparseAndEvaluate(Row& row) {
     row.dirty = false;
 }
 
-bool App::Splitter(const char* id, bool vertical, float length, bool idleLine, float* dragTotal) {
-    const float thickness = 6.0f * uiScale_;
+bool App::Splitter(const char* id, bool vertical, float length, float thickness,
+                   float* dragTotal, float idleLineOffset) {
     ImGui::InvisibleButton(id, vertical ? ImVec2(thickness, length) : ImVec2(length, thickness));
 
     const bool hovered = ImGui::IsItemHovered();
@@ -217,17 +216,17 @@ bool App::Splitter(const char* id, bool vertical, float length, bool idleLine, f
         ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS);
         dl->AddRectFilled(a, b, ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive
                                                            : ImGuiCol_SeparatorHovered));
-    } else if (idleLine) {
-        // A thin centred line when idle -- used for the row-bottom handle so
-        // it doubles as the visual divider between equation rows, rather
-        // than being fully invisible until moused over like the pane
-        // splitters inside a row.
+    } else if (idleLineOffset >= 0.0f) {
+        // A thin line at an explicit offset from the handle's start edge
+        // when idle -- used for the row-bottom handle so it doubles as the
+        // visual divider between equation rows, rather than being fully
+        // invisible until moused over like the pane splitters inside a row.
         const ImU32 col = ImGui::GetColorU32(ImGuiCol_Separator);
         if (vertical) {
-            float x = (a.x + b.x) * 0.5f;
+            float x = a.x + idleLineOffset;
             dl->AddLine(ImVec2(x, a.y), ImVec2(x, b.y), col);
         } else {
-            float y = (a.y + b.y) * 0.5f;
+            float y = a.y + idleLineOffset;
             dl->AddLine(ImVec2(a.x, y), ImVec2(b.x, y), col);
         }
     }
@@ -286,7 +285,26 @@ void App::DrawRow(Row& row) {
     if (row.dirty) ReparseAndEvaluate(row);
 
     const float s = uiScale_;
+    // THE gap size. This one number is the gap between the preview and
+    // variables boxes, between the left column and Result, and (below) on
+    // each side of the row divider line -- change it here and every gap
+    // follows. Splitter() no longer has its own copy to keep in sync.
     const float splitterThickness = 6.0f * s;
+
+    // The row divider is a handle whose idle line sits dividerLineY below
+    // the row's boxes -- the same as the gap between boxes -- with the same
+    // amount of visible space again between that line and the NEXT row's
+    // title text.
+    //
+    // The title field already has FramePadding.y of empty space inside its
+    // own frame above its text, and the font itself leaves a couple more
+    // pixels of empty space above the first row of glyphs (measured ~2px for
+    // ImGui's default font at scale 1) -- so the handle only needs to
+    // supply what's left of the gap after those.
+    const float dividerLineY = splitterThickness;
+    const float dividerBelowLine = std::max(0.0f,
+        splitterThickness - ImGui::GetStyle().FramePadding.y - 2.0f * s);
+    const float dividerThickness = dividerLineY + 1.0f /*the line itself*/ + dividerBelowLine;
     const float minPaneHeight = 30.0f * s;
     const float previewFontSize = ImGui::GetFontSize() * 1.8f * s; // bumped up — was too small for stacked exponents
     const float resultFontSize = ImGui::GetFontSize() * 2.0f * s;
@@ -294,14 +312,22 @@ void App::DrawRow(Row& row) {
     const float minPreviewHeight = 55.0f * s;
     const float rowAvailWidth = ImGui::GetContentRegionAvail().x;
 
-    // Exact now: the column splitter uses SameLine(0, 0) on both sides (see
+    const float minResultWidth = 80.0f * s;
+    const float maxResultWidth = std::max(minResultWidth, rowAvailWidth - 100.0f * s - splitterThickness);
+    // This row's own width (default if it hasn't been dragged), clamped to
+    // what the window currently allows -- so a width dragged out wide, then
+    // a window shrunk afterwards, can't push the Result box past the edge.
+    const float resultWidthPx = std::clamp(
+        row.resultWidth < 0.0f ? 170.0f * s : row.resultWidth * s, minResultWidth, maxResultWidth);
+
+    // Exact: the column splitter uses SameLine(0, 0) on both sides (see
     // below), so the row is precisely leftWidth + splitterThickness +
-    // resultColumnWidth_ wide, with no hidden ItemSpacing fudge-factor to
+    // resultWidthPx wide, with no hidden ItemSpacing fudge-factor to
     // get slightly wrong. The old version subtracted a flat 8px guess here
     // while the real layout consumed splitterThickness + 2*ItemSpacing.x --
     // a mismatch that pushed the Result box a few pixels past the window
     // edge, clipping its right border.
-    const float leftWidth = std::max(100.0f * s, rowAvailWidth - resultColumnWidth_ - splitterThickness);
+    const float leftWidth = std::max(100.0f * s, rowAvailWidth - resultWidthPx - splitterThickness);
 
     // --- Auto-fit heights (used whenever the user hasn't dragged a splitter) ---
     float autoPreviewHeight = minPreviewHeight;
@@ -339,8 +365,8 @@ void App::DrawRow(Row& row) {
     }
 
     // --- Effective heights: the user's dragged value if they've set one, else auto-fit ---
-    const float previewHeight = sharedPreviewHeight_ < 0.0f ? autoPreviewHeight : sharedPreviewHeight_ * s;
-    const float variablesHeight = sharedVarsHeight_ < 0.0f ? autoVarsHeight : sharedVarsHeight_ * s;
+    const float previewHeight = row.previewHeight < 0.0f ? autoPreviewHeight : row.previewHeight * s;
+    const float variablesHeight = row.varsHeight < 0.0f ? autoVarsHeight : row.varsHeight * s;
     const float totalHeight = previewHeight + splitterThickness + variablesHeight;
 
     // `drag` is written by Splitter() whenever it returns true; declared
@@ -384,17 +410,26 @@ void App::DrawRow(Row& row) {
         // Moves the boundary between the two panes; their COMBINED height
         // stays fixed (one grows exactly as much as the other shrinks),
         // same as any ordinary split-pane resize.
-        bool draggingPV = Splitter("##split_pv", false, leftWidth, false, &drag);
+        bool draggingPV = Splitter("##split_pv", false, leftWidth, splitterThickness, &drag);
         if (ImGui::IsItemActivated()) dragStart_ = ImVec2(previewHeight, variablesHeight);
         if (draggingPV) {
             const float combined = dragStart_.x + dragStart_.y;
             const float newPreview = std::clamp(dragStart_.x + drag, minPaneHeight, combined - minPaneHeight);
-            sharedPreviewHeight_ = newPreview / s;
-            sharedVarsHeight_ = (combined - newPreview) / s;
+            row.previewHeight = newPreview / s;
+            row.varsHeight = (combined - newPreview) / s;
         }
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            sharedPreviewHeight_ = sharedVarsHeight_ = -1.0f; // double-click resets to auto-fit
+            row.previewHeight = row.varsHeight = -1.0f; // double-click resets to auto-fit
         }
+
+        // ImGui adds ItemSpacing.y after EVERY item, including the handle
+        // above, so without this the variables box starts ItemSpacing.y
+        // lower than the layout math (totalHeight) assumes: the vertical gap
+        // comes out bigger than the horizontal one, and the Result box ends
+        // up ItemSpacing.y shorter than the left column. Pulling the cursor
+        // back up here (same trick as after the preview box) makes the gap
+        // exactly splitterThickness and the heights match.
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y);
 
         ImGui::BeginChild("vars", ImVec2(leftWidth, variablesHeight), true);
         if (row.parseResult.success && !row.parseResult.variables.empty()) {
@@ -429,21 +464,21 @@ void App::DrawRow(Row& row) {
     // default -- so the handle itself is the ENTIRE gap between panes, and
     // leftWidth's arithmetic above matches reality exactly.
     ImGui::SameLine(0.0f, 0.0f);
-    bool draggingCol = Splitter("##split_col", true, totalHeight, false, &drag);
-    if (ImGui::IsItemActivated()) dragStart_.x = resultColumnWidth_;
+    bool draggingCol = Splitter("##split_col", true, totalHeight, splitterThickness, &drag);
+    if (ImGui::IsItemActivated()) dragStart_.x = resultWidthPx;
     if (draggingCol) {
         // Result sits to the RIGHT of this handle, so dragging left widens it.
-        const float maxWidth = std::max(80.0f * s, rowAvailWidth - 100.0f * s - splitterThickness);
-        resultColumnWidth_ = std::clamp(dragStart_.x - drag, 80.0f * s, maxWidth);
+        const float newWidth = std::clamp(dragStart_.x - drag, minResultWidth, maxResultWidth);
+        row.resultWidth = newWidth / s;
     }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        resultColumnWidth_ = 170.0f * s; // double-click resets to the default width
+        row.resultWidth = -1.0f; // double-click resets this row to the default width
     }
     ImGui::SameLine(0.0f, 0.0f);
 
     // Rendered solution — height matches the group above so the two sides
     // of the row line up regardless of how tall the equation preview got.
-    ImGui::BeginChild("result", ImVec2(resultColumnWidth_, totalHeight), true);
+    ImGui::BeginChild("result", ImVec2(resultWidthPx, totalHeight), true);
     ImGui::TextDisabled("Result");
     ImGui::Separator();
     if (row.input.empty() || !row.parseResult.success) {
@@ -466,18 +501,24 @@ void App::DrawRow(Row& row) {
 
     // --- Splitter: bottom of the row ---
     // Resizes the variables pane (the bottom-most pane in the row), so the
-    // whole row gets taller or shorter. idleLine=true here -- unlike the
-    // other two splitters, this one also serves as the permanent visual
-    // divider between this row and the next, replacing the old per-row
-    // leading Separator() entirely.
-    bool draggingBottom = Splitter("##split_bottom", false, rowAvailWidth, true, &drag);
+    // whole row gets taller or shorter. Unlike the other two splitters this
+    // one also serves as the permanent visual divider between this row and
+    // the next (replacing the old per-row leading Separator()), so it draws
+    // an idle line -- dividerLineY below the row's boxes, with matching
+    // space underneath it (see the constants at the top of DrawRow).
+    bool draggingBottom = Splitter("##split_bottom", false, rowAvailWidth, dividerThickness, &drag, dividerLineY);
     if (ImGui::IsItemActivated()) dragStart_.x = variablesHeight;
     if (draggingBottom) {
-        sharedVarsHeight_ = std::max(minPaneHeight, dragStart_.x + drag) / s;
+        row.varsHeight = std::max(minPaneHeight, dragStart_.x + drag) / s;
     }
     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-        sharedPreviewHeight_ = sharedVarsHeight_ = -1.0f; // double-click resets to auto-fit
+        row.previewHeight = row.varsHeight = -1.0f; // double-click resets to auto-fit
     }
+
+    // Cancel the ItemSpacing.y ImGui adds after the handle, so the next
+    // row's title starts exactly where the divider geometry above puts it
+    // (same technique as after the other two splitters).
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y);
 
     ImGui::PopID();
 }
@@ -555,7 +596,8 @@ void App::Draw() {
 
     for (auto& row : rows_) DrawRow(row);
 
-    ImGui::Separator();
+    // No Separator() here: the last row's own bottom divider already draws
+    // the line above this button (a second one made a visible double line).
     if (ImGui::Button("+ Add row")) {
         rows_.push_back(Row{nextId_++});
     }
