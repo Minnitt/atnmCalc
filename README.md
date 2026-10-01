@@ -173,9 +173,3 @@ matrices, etc.):
   `parserTesting.cpp` is currently `GTEST_SKIP()`-ed even though the
   behaviour itself is decided and implemented (`2 3` throws) — swap it
   for a real `EXPECT_THROW` assertion.
-- The resizable layout's shared heights/widths
-  (`sharedPreviewHeight_`, `sharedVarsHeight_`, `resultColumnWidth_`) and
-  UI scale (`uiScale_`) aren't unified into one settings mechanism — scale
-  persists to `atnmcalc_settings.txt`, the layout sizes don't persist at
-  all (reset to auto-fit each run). Worth folding the layout sizes into
-  the same settings file if you want them to survive a restart.
