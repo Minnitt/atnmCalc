@@ -167,45 +167,6 @@ matrices, etc.):
   `EvalResult`'s `success`/`errorMessage` fields — the recursive
   tree-walk itself never has to thread error state through every call.
 
-## ImGui gotchas hit while building the GUI
-
-Worth keeping a record of these — each one caused a real, reproducible bug
-(one an actual crash), and the pattern is easy to reintroduce by accident
-if this code gets refactored later:
-
-- **`IsItemActive()` / `IsItemDeactivatedAfterEdit()` / `IsItemActivated()`
-  must be called immediately after the widget they refer to**, before any
-  other widget is drawn — even an innocuous `ImGui::TextDisabled(...)` in
-  between silently becomes the new "last item", and the query ends up
-  reporting on that instead. This caused the UI-scale slider to appear to
-  do nothing on release, for exactly this reason.
-- **A slider's bound value needs to persist across frames** (not be a
-  fresh local re-read from the committed value every frame) if you're
-  deferring the actual commit to release — the value the widget last
-  wrote, on the final frame before release, can otherwise get discarded
-  before the deactivation check ever reads it.
-- **Resizing a window from inside a drag handler using the raw per-frame
-  mouse delta drifts once the result gets clamped** — the cursor keeps
-  moving past the clamp boundary, so the next unclamp requires dragging
-  back through that entire dead zone first. Fix: record the value being
-  resized when the drag *starts* (`IsItemActivated()`), then apply the
-  *total* drag distance since then (`GetMouseDragDelta()`), not an
-  accumulating per-frame delta.
-- **`PushStyleVar`/`PopStyleVar` must not straddle a `Begin`/`End` (or
-  `BeginChild`/`EndChild`) pair asymmetrically** — pushing while "inside"
-  a child and popping "outside" after its `EndChild()` trips ImGui's own
-  debug assertion (`PushStyleVar/PopStyleVar Mismatch!`) and aborts the
-  program, because each window's style-stack size is checked for balance
-  between its own entry and exit. Achieving "zero gap after this child"
-  is done with plain cursor arithmetic (`SetCursorPosY(... - ItemSpacing.y)`)
-  instead, which never touches the style stack at all.
-- **`ImDrawList::AddText`'s explicit-font-size overload bypasses
-  `io.FontGlobalScale` entirely** — it draws at exactly the size you pass
-  in, unlike ImGui's normal text/widget rendering path. `ast_renderer.cpp`
-  and `app.cpp`'s `DrawRow` multiply their font sizes by `uiScale_`
-  directly for this reason, rather than relying on `FontGlobalScale` to
-  reach them.
-
 ## Open items
 
 - `ParserDesignDecision.BareNumbersWithNoOperatorBetweenThem` in
