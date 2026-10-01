@@ -12,9 +12,9 @@ set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_WAYLAND OFF CACHE BOOL "" FORCE) # avoids requiring wayland-scanner; X11 backend still builds
 FetchContent_Declare(
-    glfw
-    GIT_REPOSITORY https://github.com/glfw/glfw.git
-    GIT_TAG        3.4
+        glfw
+        GIT_REPOSITORY https://github.com/glfw/glfw.git
+        GIT_TAG        3.4
 )
 FetchContent_MakeAvailable(glfw)
 
@@ -22,37 +22,48 @@ FetchContent_MakeAvailable(glfw)
 # ImGui doesn't ship a CMakeLists for the library itself, so we fetch the
 # source and compile it directly into our target below.
 FetchContent_Declare(
-    imgui
-    GIT_REPOSITORY https://github.com/ocornut/imgui.git
-    GIT_TAG        v1.90.9
+        imgui
+        GIT_REPOSITORY https://github.com/ocornut/imgui.git
+        GIT_TAG        v1.90.9
 )
 FetchContent_MakeAvailable(imgui)
+
+# --- nlohmann/json (save/open file format) ------------------------------
+FetchContent_Declare(
+        json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG        v3.11.3
+)
+FetchContent_MakeAvailable(json)
 
 find_package(OpenGL REQUIRED)
 
 add_executable(atnmCalc
-    src/main.cpp
-    src/app.cpp
-    src/ast_renderer.cpp
-    src/mock_backend.cpp   # TODO: remove once your real backend replaces this
+        src/main.cpp
+        src/app.cpp
+        src/ast_renderer.cpp
 
-    ${imgui_SOURCE_DIR}/imgui.cpp
-    ${imgui_SOURCE_DIR}/imgui_draw.cpp
-    ${imgui_SOURCE_DIR}/imgui_tables.cpp
-    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+
+        ${imgui_SOURCE_DIR}/imgui.cpp
+        ${imgui_SOURCE_DIR}/imgui_draw.cpp
+        ${imgui_SOURCE_DIR}/imgui_tables.cpp
+        ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
+        ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
         src/lexer.cpp
         src/parser.cpp
         src/parser.h
+        src/evaluator.cpp
+        src/evaluator.h
+        src/backend.cpp
 )
 
 target_include_directories(atnmCalc PRIVATE
-    ${imgui_SOURCE_DIR}
-    ${imgui_SOURCE_DIR}/backends
+        ${imgui_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
 )
 
-target_link_libraries(atnmCalc PRIVATE glfw OpenGL::GL)
+target_link_libraries(atnmCalc PRIVATE glfw OpenGL::GL nlohmann_json::nlohmann_json)
 
 #tests------------------
 #gtest
@@ -82,3 +93,10 @@ add_executable(parserTests
 )
 
 target_link_libraries(parserTests PRIVATE gtest_main)
+add_executable(evaluatorTests
+        src/tests/evaluatorTesting.cpp
+        src/evaluator.cpp
+        src/lexer.cpp
+        src/parser.cpp
+)
+target_link_libraries(evaluatorTests PRIVATE gtest_main)
