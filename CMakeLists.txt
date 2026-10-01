@@ -77,6 +77,18 @@ target_include_directories(atnmCalc PRIVATE
 
 target_link_libraries(atnmCalc PRIVATE glfw OpenGL::GL nlohmann_json::nlohmann_json)
 
+# Statically link the MinGW runtime (libgcc, libstdc++, and libwinpthread
+# transitively) into the .exe, so a release build runs on a Windows machine
+# that doesn't have MinGW installed. Guarded to Windows+MinGW only: fully
+# static linking isn't viable on Linux (X11/GL system libraries have no
+# static versions to link against) or macOS (doesn't support it at all),
+# and applying -static there would break the build rather than help it.
+# Only applied to the GUI executable, not the gtest targets -- those are
+# developer-only and never get shipped.
+if(WIN32 AND MINGW)
+    target_link_options(atnmCalc PRIVATE -static)
+endif()
+
 #tests------------------
 #gtest
 #testing library
