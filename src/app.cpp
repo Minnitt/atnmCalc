@@ -298,7 +298,10 @@ void App::DrawMenuBar() {
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Settings")) {
-            if (ImGui::MenuItem("Preferences")) showPreferences_ = true;
+            if (ImGui::MenuItem("Preferences")) {
+                showPreferences_ = true;
+                ImGui::SetWindowFocus("Preferences");
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
@@ -311,9 +314,27 @@ void App::DrawPreferencesWindow() {
     if (ImGui::Begin("Preferences", &showPreferences_)) {
         ImGui::TextDisabled("Display");
         ImGui::Separator();
-        float scale = uiScale_;
-        if (ImGui::SliderFloat("UI Scale", &scale, 0.5f, 3.0f, "%.2fx")) {
-            SetUiScale(scale);
+        // Only pull from the committed value when the user isn't dragging --
+        // otherwise this would clobber the in-progress drag every frame.
+        // On the release frame itself, scaleSliderActive_ still holds last
+        // frame's "true" (the widget was active a moment ago), so this sync
+        // is correctly skipped right when it matters most.
+        if (!scaleSliderActive_) pendingScale_ = uiScale_;
+
+        // Both queries below MUST happen immediately after the slider,
+        // before any other widget is drawn -- they report on whatever the
+        // single most recently drawn item was, so a widget drawn in
+        // between (even a plain Text call) silently becomes the "last
+        // item" instead, and these would end up reporting on that.
+        ImGui::SliderFloat("UI Scale", &pendingScale_, 0.5f, 3.0f, "%.2fx");
+        scaleSliderActive_ = ImGui::IsItemActive();
+        bool releasedAfterChange = ImGui::IsItemDeactivatedAfterEdit();
+
+        if (scaleSliderActive_) {
+            ImGui::TextDisabled("(release to apply)");
+        }
+        if (releasedAfterChange) {
+            SetUiScale(pendingScale_);
         }
         ImGui::TextWrapped("Applies immediately and is remembered next time you open atnmCalc.");
     }
@@ -324,8 +345,16 @@ void App::Draw() {
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
     ImGui::SetNextWindowSize(vp->WorkSize);
+    // NoBringToFrontOnFocus: this window covers the ENTIRE work area every
+    // frame with no gaps, so without this flag, clicking anywhere in it
+    // (completely normal interaction) pulls it to the front of the
+    // z-order and buries any floating window above it -- like Preferences
+    // -- with no exposed pixels left to click back onto. This is the
+    // standard flag for a fullscreen "host" window that shouldn't compete
+    // for z-order with the smaller utility windows floating above it.
     ImGui::Begin("atnmCalc", nullptr,
-                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_MenuBar);
+                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove |
+                  ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     DrawMenuBar();
 

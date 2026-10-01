@@ -36,6 +36,13 @@ private:
     int nextId_ = 2;
 
     float uiScale_ = 1.0f;
+    // The slider's bound value needs to persist across frames (not be a
+    // fresh local re-read from uiScale_ every frame) -- otherwise the
+    // value the slider last computed from the mouse, on the final frame
+    // before release, gets discarded before IsItemDeactivatedAfterEdit()
+    // ever gets a chance to read it. See DrawPreferencesWindow().
+    float pendingScale_ = 1.0f;
+    bool scaleSliderActive_ = false;
     bool hasSavedScale_ = false;
     bool showPreferences_ = false;
     ImGuiStyle baseStyle_{}; // captured once in the constructor, before any scaling is applied
