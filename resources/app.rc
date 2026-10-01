@@ -1,0 +1,9 @@
+// Windows resource script -- compiled by windres (MinGW) into the .exe.
+//
+// The resource is named GLFW_ICON on purpose: GLFW's Windows backend
+// registers its window class with whatever icon resource has exactly that
+// name (see win32_window.c), so this one line gives you BOTH the icon shown
+// for the .exe in Explorer and the icon in the window's title bar/taskbar,
+// with no code changes. If it's missing, GLFW falls back to the default
+// generic application icon.
+GLFW_ICON ICON "icon.ico"

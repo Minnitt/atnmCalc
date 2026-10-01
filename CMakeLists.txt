@@ -1,6 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
 project(atnmCalc CXX C)
 
+# The Windows resource compiler (windres under MinGW), needed to embed the
+# icon. Enabled only on Windows -- Linux/macOS have no RC compiler, so
+# listing RC in project() unconditionally would fail the configure there.
+if(WIN32)
+    enable_language(RC)
+endif()
+
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -74,6 +81,17 @@ target_include_directories(atnmCalc PRIVATE
         ${imgui_SOURCE_DIR}/backends
         ${tinyfiledialogs_SOURCE_DIR}
 )
+
+# Embed the application icon (see resources/app.rc). Windows only -- the
+# .rc file is meaningless to other platforms' toolchains.
+if(WIN32)
+    target_sources(atnmCalc PRIVATE resources/app.rc)
+    # The .rc refers to icon.ico by bare filename; this lets windres find it
+    # next to the script, and rebuilds the .exe when the icon changes.
+    target_include_directories(atnmCalc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/resources)
+    set_source_files_properties(resources/app.rc PROPERTIES
+            OBJECT_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/resources/icon.ico)
+endif()
 
 target_link_libraries(atnmCalc PRIVATE glfw OpenGL::GL nlohmann_json::nlohmann_json)
 

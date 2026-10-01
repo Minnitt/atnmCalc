@@ -11,6 +11,10 @@
 #include <GLFW/glfw3.h>
 #include <cstdio>
 
+#ifdef __linux__
+#include "app_icon.h" // raw pixel data for glfwSetWindowIcon (Windows uses the .rc resource instead)
+#endif
+
 static void GlfwErrorCallback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
@@ -27,6 +31,23 @@ int GUIApp() {
 
     GLFWwindow* window = glfwCreateWindow(900, 650, "atnmCalc", nullptr, nullptr);
     if (!window) { glfwTerminate(); return 1; }
+
+#ifdef __linux__
+    // Title bar / taskbar / alt-tab icon. On Windows this comes from the
+    // embedded GLFW_ICON resource (resources/app.rc) instead, and macOS has
+    // no per-window icon at all. Several sizes are supplied so the window
+    // manager can pick whichever suits its panel. GLFW only reads the
+    // pixels, hence the const_cast. (Under GLFW's X11 backend this works;
+    // a native Wayland build would report "unsupported" via the error
+    // callback instead -- this project builds the X11 backend only.)
+    GLFWimage icons[3] = {
+        {kAppIcon32Size,  kAppIcon32Size,  const_cast<unsigned char*>(kAppIcon32)},
+        {kAppIcon64Size,  kAppIcon64Size,  const_cast<unsigned char*>(kAppIcon64)},
+        {kAppIcon128Size, kAppIcon128Size, const_cast<unsigned char*>(kAppIcon128)},
+    };
+    glfwSetWindowIcon(window, 3, icons);
+#endif
+
     glfwMakeContextCurrent(window);
     glfwSwapInterval(1); // vsync
 
