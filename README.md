@@ -166,10 +166,3 @@ matrices, etc.):
   at the `evaluateAst`/`evaluateAST` boundary, converting them into
   `EvalResult`'s `success`/`errorMessage` fields — the recursive
   tree-walk itself never has to thread error state through every call.
-
-## Open items
-
-- `ParserDesignDecision.BareNumbersWithNoOperatorBetweenThem` in
-  `parserTesting.cpp` is currently `GTEST_SKIP()`-ed even though the
-  behaviour itself is decided and implemented (`2 3` throws) — swap it
-  for a real `EXPECT_THROW` assertion.
