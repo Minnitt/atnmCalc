@@ -117,6 +117,33 @@ at all.
   rather than scrolling, since seeing/setting several values at once
   matters more there than it does for a purely visual equation render.
 
+## Application icon
+
+Icons work differently per platform, so there are two mechanisms:
+
+- **Windows** — `resources/app.rc` embeds `icon.ico` into the `.exe` as a
+  resource named `GLFW_ICON`. That exact name matters: GLFW's Windows
+  backend uses it for the window class, so the one resource covers both the
+  file icon in Explorer and the title bar/taskbar icon, with no C++ code.
+  (`CMakeLists.txt` enables the `RC` language and adds the `.rc` file under
+  `if(WIN32)` only — Linux/macOS have no resource compiler.)
+- **Linux (X11)** — the icon is set at runtime in `main.cpp` with
+  `glfwSetWindowIcon()`, from raw RGBA pixels in the generated
+  `src/app_icon.h`. A Linux executable can't carry a file icon the way a
+  Windows `.exe` does; for a launcher/file-manager icon you'd add a
+  `.desktop` file instead (not included).
+- **macOS** — has no per-window icon; it comes from an app bundle (not built
+  here).
+  `resources/icon.png` is the single source of truth. To change the icon,
+  replace it (square, at least 256x256) and run:
+
+  python resources/make_icon_header.py
+
+which regenerates both `resources/icon.ico` (Windows, 7 sizes from 16 to
+256px) and `src/app_icon.h` (Linux pixel data) from it, then rebuild. It
+needs Python 3 and Pillow (`pip install pillow`); the generated files are
+committed, so you only need this when the artwork changes.
+
 ## Design decisions
 
 A few points where the grammar could reasonably have gone either way —
