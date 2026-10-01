@@ -16,10 +16,12 @@
 #include "ast_renderer.h"
 #include "imgui.h"
 #include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include <tinyfiledialogs.h>
 
 App::App() {
     // Capture the style as StyleColorsDark() left it, BEFORE any scaling --
@@ -31,6 +33,7 @@ App::App() {
     if (hasSavedScale_) {
         SetUiScale(uiScale_); // re-apply the saved scale to the style/fonts now that we have it
     }
+    resultColumnWidth_ = 170.0f * uiScale_; // sensible starting point; user can drag it from here
 }
 
 void App::ApplySuggestedScaleIfUnset(float suggestedScale) {
@@ -64,7 +67,6 @@ void App::SetUiScale(float scale) {
 }
 
 std::string App::SettingsFilePath() { return "atnmcalc_settings.txt"; }
-std::string App::EquationsFilePath() { return "atnmcalc_equations.json"; }
 
 void App::LoadSettings() {
     std::ifstream in(SettingsFilePath());
@@ -96,9 +98,41 @@ void App::NewFile() {
     rows_.clear();
     rows_.push_back(Row{1});
     nextId_ = 2;
+    currentFilePath_.clear(); // "New" starts an untitled session, same as most editors
 }
 
-void App::SaveEquationsToFile() const {
+void App::SaveFile() {
+    if (currentFilePath_.empty()) {
+        SaveAs(); // no path chosen yet this session -- behave like Save As
+        return;
+    }
+    SaveEquationsToFile(currentFilePath_);
+}
+
+void App::SaveAs() {
+    const char* filterPatterns[1] = {"*.json"};
+    const char* chosen = tinyfd_saveFileDialog(
+        "Save equations",
+        currentFilePath_.empty() ? "equations.json" : currentFilePath_.c_str(),
+        1, filterPatterns, "JSON files");
+    if (!chosen) return; // user cancelled the dialog
+    currentFilePath_ = chosen;
+    SaveEquationsToFile(currentFilePath_);
+}
+
+void App::OpenFile() {
+    const char* filterPatterns[1] = {"*.json"};
+    const char* chosen = tinyfd_openFileDialog(
+        "Open equations",
+        "",
+        1, filterPatterns, "JSON files",
+        0); // no multi-select
+    if (!chosen) return; // user cancelled the dialog
+    OpenEquationsFromFile(chosen);
+    currentFilePath_ = chosen;
+}
+
+void App::SaveEquationsToFile(const std::string& path) const {
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& row : rows_) {
         nlohmann::json obj;
@@ -109,14 +143,14 @@ void App::SaveEquationsToFile() const {
         obj["variables"] = vars;
         arr.push_back(obj);
     }
-    std::ofstream out(EquationsFilePath());
+    std::ofstream out(path);
     if (!out) return;
     out << arr.dump(2); // pretty-printed, 2-space indent -- readable if you open it by hand
 }
 
-void App::OpenEquationsFromFile() {
-    std::ifstream in(EquationsFilePath());
-    if (!in) return; // nothing saved yet -- leave current rows alone
+void App::OpenEquationsFromFile(const std::string& path) {
+    std::ifstream in(path);
+    if (!in) return; // shouldn't normally happen -- the dialog only returns existing files
 
     nlohmann::json arr;
     try {
@@ -169,9 +203,54 @@ void App::ReparseAndEvaluate(Row& row) {
     row.dirty = false;
 }
 
+bool App::Splitter(const char* id, bool vertical, float length, bool idleLine, float* dragTotal) {
+    const float thickness = 6.0f * uiScale_;
+    ImGui::InvisibleButton(id, vertical ? ImVec2(thickness, length) : ImVec2(length, thickness));
+
+    const bool hovered = ImGui::IsItemHovered();
+    const bool active = ImGui::IsItemActive();
+    const ImVec2 a = ImGui::GetItemRectMin();
+    const ImVec2 b = ImGui::GetItemRectMax();
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+
+    if (hovered || active) {
+        ImGui::SetMouseCursor(vertical ? ImGuiMouseCursor_ResizeEW : ImGuiMouseCursor_ResizeNS);
+        dl->AddRectFilled(a, b, ImGui::GetColorU32(active ? ImGuiCol_SeparatorActive
+                                                           : ImGuiCol_SeparatorHovered));
+    } else if (idleLine) {
+        // A thin centred line when idle -- used for the row-bottom handle so
+        // it doubles as the visual divider between equation rows, rather
+        // than being fully invisible until moused over like the pane
+        // splitters inside a row.
+        const ImU32 col = ImGui::GetColorU32(ImGuiCol_Separator);
+        if (vertical) {
+            float x = (a.x + b.x) * 0.5f;
+            dl->AddLine(ImVec2(x, a.y), ImVec2(x, b.y), col);
+        } else {
+            float y = (a.y + b.y) * 0.5f;
+            dl->AddLine(ImVec2(a.x, y), ImVec2(b.x, y), col);
+        }
+    }
+
+    // The draw-list calls above don't register as ImGui items (AddRectFilled/
+    // AddLine bypass the item system entirely), so the "last item" the
+    // caller's subsequent IsItemActivated()/IsItemHovered() will see is
+    // still this InvisibleButton -- exactly as needed.
+    //
+    // IsMouseDragging only turns true once the mouse has moved past ImGui's
+    // small drag threshold, so a plain click (or a double-click, used below
+    // by callers to reset to auto-fit) never counts as a resize.
+    if (!active || !ImGui::IsMouseDragging(ImGuiMouseButton_Left)) return false;
+    ImVec2 d = ImGui::GetMouseDragDelta(ImGuiMouseButton_Left); // total since the drag began, not per-frame
+    *dragTotal = vertical ? d.x : d.y;
+    return true;
+}
+
 void App::DrawRow(Row& row) {
     ImGui::PushID(row.id);
-    ImGui::Separator();
+    // (No leading Separator here any more -- each row's bottom splitter
+    // draws the dividing line before the next row. The very first row still
+    // gets one, drawn once in Draw() before the row loop starts.)
 
     // Styled to blend into the background until hovered/focused, so it
     // reads as a title rather than an obvious text box -- but it's a real
@@ -206,31 +285,77 @@ void App::DrawRow(Row& row) {
 
     if (row.dirty) ReparseAndEvaluate(row);
 
-    const float resultWidth = 170.0f * uiScale_;
-    const float previewFontSize = ImGui::GetFontSize() * 1.8f * uiScale_; // bumped up — was too small for stacked exponents
-    const float resultFontSize = ImGui::GetFontSize() * 2.0f * uiScale_;
-    const float previewPadding = 16.0f * uiScale_;   // vertical breathing room inside the preview box
-    const float minPreviewHeight = 55.0f * uiScale_;
-    const float variablesHeight = 60.0f * uiScale_;
-    const float spacing = ImGui::GetStyle().ItemSpacing.y;
+    const float s = uiScale_;
+    const float splitterThickness = 6.0f * s;
+    const float minPaneHeight = 30.0f * s;
+    const float previewFontSize = ImGui::GetFontSize() * 1.8f * s; // bumped up — was too small for stacked exponents
+    const float resultFontSize = ImGui::GetFontSize() * 2.0f * s;
+    const float previewPadding = 16.0f * s;   // vertical breathing room inside the preview box
+    const float minPreviewHeight = 55.0f * s;
+    const float rowAvailWidth = ImGui::GetContentRegionAvail().x;
 
-    // Size the preview box to whatever the equation actually needs, rather
-    // than a fixed guess — this is what removes the scrollbar/clipping on
-    // tall content like nested fractions or stacked exponents.
-    float previewHeight = minPreviewHeight;
+    // Exact now: the column splitter uses SameLine(0, 0) on both sides (see
+    // below), so the row is precisely leftWidth + splitterThickness +
+    // resultColumnWidth_ wide, with no hidden ItemSpacing fudge-factor to
+    // get slightly wrong. The old version subtracted a flat 8px guess here
+    // while the real layout consumed splitterThickness + 2*ItemSpacing.x --
+    // a mismatch that pushed the Result box a few pixels past the window
+    // edge, clipping its right border.
+    const float leftWidth = std::max(100.0f * s, rowAvailWidth - resultColumnWidth_ - splitterThickness);
+
+    // --- Auto-fit heights (used whenever the user hasn't dragged a splitter) ---
+    float autoPreviewHeight = minPreviewHeight;
     if (!row.input.empty() && row.parseResult.success) {
         ImVec2 eqSize = MeasureEquation(row.parseResult.root, previewFontSize);
-        previewHeight = std::max(minPreviewHeight, eqSize.y + previewPadding);
+        autoPreviewHeight = std::max(minPreviewHeight, eqSize.y + previewPadding);
     }
-    float leftWidth = ImGui::GetContentRegionAvail().x - resultWidth - 8.0f;
-    float totalHeight = previewHeight + spacing + variablesHeight;
 
-    // BeginGroup (rather than a fixed-size BeginChild) so this container
-    // doesn't need to guess its own height up front — it just wraps
-    // whatever height the preview+vars children end up being.
+    // The variables panel wraps to multiple lines rather than running off
+    // the right edge (see the wrapping loop below), so its auto-fit height
+    // needs to account for however many lines that wrapping actually
+    // produces. The per-slot width here is measured from the ACTUAL
+    // style/font metrics (not a guessed constant) specifically so this
+    // estimate matches the real wrap loop's decisions as closely as
+    // possible -- variable names are always exactly one character, so a
+    // single measured sample is representative of every slot. Even so, the
+    // "vars" child below is intentionally left scrollable (no NoScrollbar
+    // flag) as a safety net: if this estimate is ever slightly short,
+    // content stays reachable via a scrollbar rather than being clipped.
+    const float varItemWidth = 100.0f * s;
+    const float varItemSpacing = ImGui::GetStyle().ItemSpacing.x;
+    const float varLabelWidth = ImGui::CalcTextSize("W").x; // representative: all variable labels are one char
+    const float estimatedVarSlotWidth =
+        varItemWidth + ImGui::GetStyle().ItemInnerSpacing.x + varLabelWidth + varItemSpacing;
+    const float varLineHeight = ImGui::GetFrameHeightWithSpacing();
+    const float variablesHeaderHeight = ImGui::GetTextLineHeightWithSpacing();
+    const float variablesPadding = 10.0f * s;
+
+    float autoVarsHeight = variablesHeaderHeight + varLineHeight + variablesPadding; // header + at least one line
+    if (row.parseResult.success && !row.parseResult.variables.empty()) {
+        int slotsPerRow = std::max(1, static_cast<int>(leftWidth / estimatedVarSlotWidth));
+        int rowCount = static_cast<int>(std::ceil(
+            static_cast<double>(row.parseResult.variables.size()) / slotsPerRow));
+        autoVarsHeight = variablesHeaderHeight + rowCount * varLineHeight + variablesPadding;
+    }
+
+    // --- Effective heights: the user's dragged value if they've set one, else auto-fit ---
+    const float previewHeight = sharedPreviewHeight_ < 0.0f ? autoPreviewHeight : sharedPreviewHeight_ * s;
+    const float variablesHeight = sharedVarsHeight_ < 0.0f ? autoVarsHeight : sharedVarsHeight_ * s;
+    const float totalHeight = previewHeight + splitterThickness + variablesHeight;
+
+    // `drag` is written by Splitter() whenever it returns true; declared
+    // once and reused across all three splitter calls below, each gated by
+    // its own returned bool so there's no risk of reading a stale value
+    // left over from a different splitter.
+    float drag = 0.0f;
+
     ImGui::BeginGroup();
     {
-        ImGui::BeginChild("preview", ImVec2(leftWidth, previewHeight), true, ImGuiWindowFlags_NoScrollbar);
+        // HorizontalScrollbar (and no NoScrollbar override) so a row whose
+        // equation renders wider than the box -- long implicit-multiplication
+        // chains especially -- can be scrolled into view instead of silently
+        // clipping past the right edge with no indication there's more.
+        ImGui::BeginChild("preview", ImVec2(leftWidth, previewHeight), true, ImGuiWindowFlags_HorizontalScrollbar);
         if (row.input.empty()) {
             ImGui::TextDisabled("(rendered equation appears here)");
         } else if (!row.parseResult.success) {
@@ -238,25 +363,60 @@ void App::DrawRow(Row& row) {
         } else {
             ImVec2 avail = ImGui::GetContentRegionAvail();
             ImVec2 size = MeasureEquation(row.parseResult.root, previewFontSize);
-            ImGui::SetCursorPos(ImVec2(std::max(4.0f * uiScale_, (avail.x - size.x) * 0.5f),
-                                        std::max(4.0f * uiScale_, (avail.y - size.y) * 0.5f)));
+            ImGui::SetCursorPos(ImVec2(std::max(4.0f * s, (avail.x - size.x) * 0.5f),
+                                        std::max(4.0f * s, (avail.y - size.y) * 0.5f)));
             DrawEquation(row.parseResult.root, previewFontSize);
         }
         ImGui::EndChild();
 
+        // Pull the splitter flush against the preview box, rather than
+        // leaving the default ItemSpacing gap -- the handle's own 6px
+        // thickness becomes the only visible gap. Plain cursor arithmetic
+        // rather than a PushStyleVar/PopStyleVar pair specifically because
+        // that pair would straddle preview's own Begin/End boundary
+        // asymmetrically (pushed "inside" at EndChild, popped "outside"
+        // after) -- which is exactly what ImGui's debug stack-checker
+        // flags as a mismatch, since it expects each window's own style
+        // stack size to balance between its entry and exit.
+        ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y);
+
+        // --- Splitter: between preview and variables ---
+        // Moves the boundary between the two panes; their COMBINED height
+        // stays fixed (one grows exactly as much as the other shrinks),
+        // same as any ordinary split-pane resize.
+        bool draggingPV = Splitter("##split_pv", false, leftWidth, false, &drag);
+        if (ImGui::IsItemActivated()) dragStart_ = ImVec2(previewHeight, variablesHeight);
+        if (draggingPV) {
+            const float combined = dragStart_.x + dragStart_.y;
+            const float newPreview = std::clamp(dragStart_.x + drag, minPaneHeight, combined - minPaneHeight);
+            sharedPreviewHeight_ = newPreview / s;
+            sharedVarsHeight_ = (combined - newPreview) / s;
+        }
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            sharedPreviewHeight_ = sharedVarsHeight_ = -1.0f; // double-click resets to auto-fit
+        }
+
         ImGui::BeginChild("vars", ImVec2(leftWidth, variablesHeight), true);
         if (row.parseResult.success && !row.parseResult.variables.empty()) {
             ImGui::TextDisabled("Define variables:");
-            for (const auto& name : row.parseResult.variables) {
-                ImGui::SetNextItemWidth(100);
+            // Standard ImGui "wrap to next line" pattern: after drawing each
+            // input, check whether the NEXT one would run past the window's
+            // visible right edge, and only call SameLine() if it wouldn't.
+            float windowVisibleX2 = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+            const auto& names = row.parseResult.variables;
+            for (size_t i = 0; i < names.size(); i++) {
+                const std::string& name = names[i];
+                ImGui::SetNextItemWidth(varItemWidth);
                 float v = static_cast<float>(row.varValues[name]);
                 if (ImGui::InputFloat(name.c_str(), &v)) {
                     row.varValues[name] = v;
                     row.evalResult = evaluateAst(row.parseResult.root, row.varValues);
                 }
-                ImGui::SameLine();
+                float nextItemX2 = ImGui::GetItemRectMax().x + varItemSpacing + varItemWidth; // rough width of the next slot
+                if (i + 1 < names.size() && nextItemX2 < windowVisibleX2) {
+                    ImGui::SameLine();
+                }
             }
-            ImGui::NewLine();
         } else {
             ImGui::TextDisabled("(no variables in this equation)");
         }
@@ -264,11 +424,26 @@ void App::DrawRow(Row& row) {
     }
     ImGui::EndGroup();
 
-    ImGui::SameLine();
+    // --- Splitter: between the left column and Result ---
+    // SameLine(0, 0) on both sides -- explicitly zero spacing, not the
+    // default -- so the handle itself is the ENTIRE gap between panes, and
+    // leftWidth's arithmetic above matches reality exactly.
+    ImGui::SameLine(0.0f, 0.0f);
+    bool draggingCol = Splitter("##split_col", true, totalHeight, false, &drag);
+    if (ImGui::IsItemActivated()) dragStart_.x = resultColumnWidth_;
+    if (draggingCol) {
+        // Result sits to the RIGHT of this handle, so dragging left widens it.
+        const float maxWidth = std::max(80.0f * s, rowAvailWidth - 100.0f * s - splitterThickness);
+        resultColumnWidth_ = std::clamp(dragStart_.x - drag, 80.0f * s, maxWidth);
+    }
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        resultColumnWidth_ = 170.0f * s; // double-click resets to the default width
+    }
+    ImGui::SameLine(0.0f, 0.0f);
 
     // Rendered solution — height matches the group above so the two sides
     // of the row line up regardless of how tall the equation preview got.
-    ImGui::BeginChild("result", ImVec2(resultWidth, totalHeight), true);
+    ImGui::BeginChild("result", ImVec2(resultColumnWidth_, totalHeight), true);
     ImGui::TextDisabled("Result");
     ImGui::Separator();
     if (row.input.empty() || !row.parseResult.success) {
@@ -281,10 +456,28 @@ void App::DrawRow(Row& row) {
         ASTNodePtr resultNode = std::make_shared<NumberNode>(row.evalResult.value);
         ImVec2 avail = ImGui::GetContentRegionAvail();
         ImVec2 size = MeasureEquation(resultNode, resultFontSize);
-        ImGui::SetCursorPos(ImVec2(std::max(4.0f * uiScale_, (avail.x - size.x) * 0.5f), ImGui::GetCursorPosY() + 12.0f * uiScale_));
+        // Center within the space actually remaining below the header.
+        ImGui::SetCursorPos(ImVec2(std::max(4.0f * s, (avail.x - size.x) * 0.5f),
+                                    ImGui::GetCursorPosY() + std::max(4.0f * s, (avail.y - size.y) * 0.5f)));
         DrawEquation(resultNode, resultFontSize);
     }
     ImGui::EndChild();
+    ImGui::SetCursorPosY(ImGui::GetCursorPosY() - ImGui::GetStyle().ItemSpacing.y); // flush against the bottom splitter, same reasoning as above
+
+    // --- Splitter: bottom of the row ---
+    // Resizes the variables pane (the bottom-most pane in the row), so the
+    // whole row gets taller or shorter. idleLine=true here -- unlike the
+    // other two splitters, this one also serves as the permanent visual
+    // divider between this row and the next, replacing the old per-row
+    // leading Separator() entirely.
+    bool draggingBottom = Splitter("##split_bottom", false, rowAvailWidth, true, &drag);
+    if (ImGui::IsItemActivated()) dragStart_.x = variablesHeight;
+    if (draggingBottom) {
+        sharedVarsHeight_ = std::max(minPaneHeight, dragStart_.x + drag) / s;
+    }
+    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        sharedPreviewHeight_ = sharedVarsHeight_ = -1.0f; // double-click resets to auto-fit
+    }
 
     ImGui::PopID();
 }
@@ -293,8 +486,9 @@ void App::DrawMenuBar() {
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("File")) {
             if (ImGui::MenuItem("New")) NewFile();
-            if (ImGui::MenuItem("Open")) OpenEquationsFromFile();
-            if (ImGui::MenuItem("Save")) SaveEquationsToFile();
+            if (ImGui::MenuItem("Open...")) OpenFile();
+            if (ImGui::MenuItem("Save")) SaveFile();
+            if (ImGui::MenuItem("Save As...")) SaveAs();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("Settings")) {
@@ -357,6 +551,7 @@ void App::Draw() {
                   ImGuiWindowFlags_MenuBar | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
     DrawMenuBar();
+    ImGui::Separator(); // top divider -- each row's own bottom splitter handles dividers after that
 
     for (auto& row : rows_) DrawRow(row);
 

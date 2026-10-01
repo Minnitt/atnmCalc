@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(atnmCalc CXX)
+project(atnmCalc CXX C)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -36,6 +36,16 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(json)
 
+# --- tinyfiledialogs (native Save As / Open dialogs) ---------------------
+# No CMakeLists of its own -- just a single .c/.h pair -- so we fetch the
+# source and compile it directly into our target, same as ImGui above.
+FetchContent_Declare(
+        tinyfiledialogs
+        GIT_REPOSITORY https://github.com/native-toolkit/tinyfiledialogs.git
+        GIT_TAG        master
+)
+FetchContent_MakeAvailable(tinyfiledialogs)
+
 find_package(OpenGL REQUIRED)
 
 add_executable(atnmCalc
@@ -50,6 +60,7 @@ add_executable(atnmCalc
         ${imgui_SOURCE_DIR}/imgui_widgets.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
         ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
+        ${tinyfiledialogs_SOURCE_DIR}/tinyfiledialogs.c
         src/lexer.cpp
         src/parser.cpp
         src/parser.h
@@ -61,6 +72,7 @@ add_executable(atnmCalc
 target_include_directories(atnmCalc PRIVATE
         ${imgui_SOURCE_DIR}
         ${imgui_SOURCE_DIR}/backends
+        ${tinyfiledialogs_SOURCE_DIR}
 )
 
 target_link_libraries(atnmCalc PRIVATE glfw OpenGL::GL nlohmann_json::nlohmann_json)
