@@ -237,7 +237,7 @@ TEST(ParserDesignDecision, BareNumbersWithNoOperatorBetweenThem) {
     // (see atAtomStart() there) since two bare numbers side by side is almost
     // always a typo, unlike "2x". Pick one on purpose:
     //
-    //   EXPECT_THROW(parse("2 3"), std::exception);       // if you exclude NUMBER
+       EXPECT_THROW(parse("2 3"), std::exception);       // if you exclude NUMBER
     //   EXPECT_DOUBLE_EQ(parseAndEvaluate("2 3"), 6.0);    // if you keep it as-is
-    GTEST_SKIP() << "decide the intended behaviour, then replace this with a real assertion";
+    
 }
