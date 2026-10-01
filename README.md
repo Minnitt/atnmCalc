@@ -44,6 +44,7 @@ GUI needs the tree, not a flat notation for it.
 | `src/backend.cpp` | Wires lexer -> parser -> evaluator together to implement `backend_interface.h` |
 | `src/ast_renderer.h` / `.cpp` | Draws an `ASTNode` tree as math notation: fraction bars, hand-drawn radicals, raised/shrunk exponents |
 | `src/app.h` / `.cpp` | The row-based UI — each row is an independent equation with an editable title, input, rendered preview, variable inputs, and result. Also owns the File menu, Settings/Preferences, UI scaling, and the resizable layout (see below) |
+| `src/app_icon.h` | This file contains an entire icon and is used to implement an icon for linux |
 | `src/main.cpp` | GLFW/OpenGL window setup and the ImGui frame loop; detects the monitor's content scale on first launch |
 | `src/tests/lexerTesting.cpp` | gtest suite for the lexer |
 | `src/tests/parserTesting.cpp` | gtest suite for the parser (tree shape + evaluated values, via a small test-only evaluator) |
