@@ -15,7 +15,7 @@ static void GlfwErrorCallback(int error, const char* description) {
     std::fprintf(stderr, "GLFW error %d: %s\n", error, description);
 }
 
-int main() {
+int GUIApp() {
     glfwSetErrorCallback(GlfwErrorCallback);
     if (!glfwInit()) return 1;
 
@@ -38,6 +38,14 @@ int main() {
     ImGui_ImplOpenGL3_Init(glslVersion);
 
     App app;
+
+    // On the very first run on a machine (no saved uiScale yet), suggest
+    // the monitor's own content scale -- e.g. ~2.0 on a typical HiDPI
+    // laptop panel -- so the app isn't tiny out of the box. Does nothing
+    // if a scale was already saved from a previous session.
+    float contentScaleX = 1.0f, contentScaleY = 1.0f;
+    glfwGetWindowContentScale(window, &contentScaleX, &contentScaleY);
+    app.ApplySuggestedScaleIfUnset(contentScaleX);
 
     while (!glfwWindowShouldClose(window)) {
         glfwPollEvents();
@@ -66,4 +74,8 @@ int main() {
     glfwDestroyWindow(window);
     glfwTerminate();
     return 0;
+}
+
+int main() {
+    return GUIApp();
 }

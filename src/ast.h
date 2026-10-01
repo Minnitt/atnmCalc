@@ -20,7 +20,7 @@ enum class BinOp { Add, Sub, Mul, Div, Pow };
 // (and evaluator) can switch on it without RTTI/dynamic_cast.
 struct ASTNode {
     virtual ~ASTNode() = default;
-    virtual NodeType type() const = 0;
+    [[nodiscard]] virtual NodeType type() const = 0;
 };
 
 using ASTNodePtr = std::shared_ptr<ASTNode>;
@@ -28,13 +28,13 @@ using ASTNodePtr = std::shared_ptr<ASTNode>;
 struct NumberNode : ASTNode {
     double value;
     explicit NumberNode(double v) : value(v) {}
-    NodeType type() const override { return NodeType::Number; }
+    [[nodiscard]] NodeType type() const override { return NodeType::Number; }
 };
 
 struct VariableNode : ASTNode {
     std::string name;
     explicit VariableNode(std::string n) : name(std::move(n)) {}
-    NodeType type() const override { return NodeType::Variable; }
+    [[nodiscard]] NodeType type() const override { return NodeType::Variable; }
 };
 
 // Covers + - * / ^  (which operator is in `op`)
@@ -44,14 +44,14 @@ struct BinaryOpNode : ASTNode {
     ASTNodePtr right;
     BinaryOpNode(BinOp o, ASTNodePtr l, ASTNodePtr r)
         : op(o), left(std::move(l)), right(std::move(r)) {}
-    NodeType type() const override { return NodeType::BinaryOp; }
+    [[nodiscard]] NodeType type() const override { return NodeType::BinaryOp; }
 };
 
 // The leading minus in something like -x or -(1+2)
 struct UnaryMinusNode : ASTNode {
     ASTNodePtr operand;
     explicit UnaryMinusNode(ASTNodePtr o) : operand(std::move(o)) {}
-    NodeType type() const override { return NodeType::UnaryMinus; }
+    [[nodiscard]] NodeType type() const override { return NodeType::UnaryMinus; }
 };
 
 // \frac{numerator}{denominator}
@@ -60,12 +60,12 @@ struct FracNode : ASTNode {
     ASTNodePtr denominator;
     FracNode(ASTNodePtr n, ASTNodePtr d)
         : numerator(std::move(n)), denominator(std::move(d)) {}
-    NodeType type() const override { return NodeType::Frac; }
+    [[nodiscard]] NodeType type() const override { return NodeType::Frac; }
 };
 
 // \sqrt{radicand}
 struct SqrtNode : ASTNode {
     ASTNodePtr radicand;
     explicit SqrtNode(ASTNodePtr r) : radicand(std::move(r)) {}
-    NodeType type() const override { return NodeType::Sqrt; }
+    [[nodiscard]] NodeType type() const override { return NodeType::Sqrt; }
 };
