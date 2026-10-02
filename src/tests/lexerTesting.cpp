@@ -10,12 +10,18 @@
 
 namespace {
 
-// Compares only `.type` for each token, in order. Most tests only care
-// about structure (which tokens, in what order), not their values.
+// Compares only `.type` for each token, in order, IGNORING the trailing
+// END sentinel every call to tokenise() appends -- callers list only the
+// "real" tokens they expect, same as before END existed. Also confirms
+// that sentinel is actually there and is actually last, since that's an
+// invariant the parser depends on.
 void expectTypes(const std::string& input, const std::vector<TokenType>& expected) {
     auto tokens = Lexer::tokenise(input);
-    ASSERT_EQ(tokens.size(), expected.size())
-        << "for input: \"" << input << "\"";
+    ASSERT_FALSE(tokens.empty()) << "for input: \"" << input << "\"";
+    EXPECT_EQ(tokens.back().type, TokenType::END)
+        << "for input: \"" << input << "\" (every token list should end with END)";
+    ASSERT_EQ(tokens.size() - 1, expected.size())
+        << "for input: \"" << input << "\" (excluding the trailing END token)";
     for (size_t i = 0; i < expected.size(); i++) {
         EXPECT_EQ(tokens[i].type, expected[i])
             << "token " << i << " for input: \"" << input << "\"";
@@ -75,14 +81,14 @@ TEST(LexerArithmetic, MinusIsNotFoldedIntoNumber) {
 
 TEST(LexerNumbers, IntegerValue) {
     auto tokens = Lexer::tokenise("42");
-    ASSERT_EQ(tokens.size(), 1);
+    ASSERT_EQ(tokens.size(), 2);  // NUMBER, END
     EXPECT_EQ(tokens[0].type, TokenType::NUMBER);
     EXPECT_DOUBLE_EQ(tokens[0].value, 42.0);
 }
 
 TEST(LexerNumbers, DecimalValue) {
     auto tokens = Lexer::tokenise("12.5");
-    ASSERT_EQ(tokens.size(), 1);
+    ASSERT_EQ(tokens.size(), 2);  // NUMBER, END
     EXPECT_EQ(tokens[0].type, TokenType::NUMBER);
     EXPECT_DOUBLE_EQ(tokens[0].value, 12.5);
 }
@@ -91,7 +97,7 @@ TEST(LexerNumbers, LeadingDecimalPoint) {
     // ".5" -- decide deliberately whether this is valid; this test
     // documents whichever choice you made. Currently expecting it to work.
     auto tokens = Lexer::tokenise(".5");
-    ASSERT_EQ(tokens.size(), 1);
+    ASSERT_EQ(tokens.size(), 2);  // NUMBER, END
     EXPECT_DOUBLE_EQ(tokens[0].value, 0.5);
 }
 
@@ -156,7 +162,7 @@ TEST(LexerSqrt, NestedInsideFrac) {
 
 TEST(LexerVariables, SingleVariable) {
     auto tokens = Lexer::tokenise("x");
-    ASSERT_EQ(tokens.size(), 1);
+    ASSERT_EQ(tokens.size(), 2);  // VARIABLE, END
     EXPECT_EQ(tokens[0].type, TokenType::VARIABLE);
     EXPECT_EQ(tokens[0].name, 'x');
 }
@@ -166,7 +172,7 @@ TEST(LexerVariables, AdjacentLettersAreSeparateVariables) {
     // token for a name "xy". This is the per-character-variable decision
     // discussed earlier, matching LaTeX math-mode convention.
     auto tokens = Lexer::tokenise("xy");
-    ASSERT_EQ(tokens.size(), 2);
+    ASSERT_EQ(tokens.size(), 3);  // VARIABLE, VARIABLE, END
     EXPECT_EQ(tokens[0].type, TokenType::VARIABLE);
     EXPECT_EQ(tokens[0].name, 'x');
     EXPECT_EQ(tokens[1].type, TokenType::VARIABLE);
@@ -175,8 +181,9 @@ TEST(LexerVariables, AdjacentLettersAreSeparateVariables) {
 
 TEST(LexerVariables, LongAlphabeticRunIsManySeparateVariables) {
     auto tokens = Lexer::tokenise("xyz");
-    ASSERT_EQ(tokens.size(), 3);
-    for (auto& t : tokens) EXPECT_EQ(t.type, TokenType::VARIABLE);
+    ASSERT_EQ(tokens.size(), 4);  // VARIABLE x3, END
+    for (size_t i = 0; i < tokens.size() - 1; i++) EXPECT_EQ(tokens[i].type, TokenType::VARIABLE);
+    EXPECT_EQ(tokens.back().type, TokenType::END);
 }
 
 TEST(LexerVariables, VariableNextToNumber) {
@@ -208,14 +215,14 @@ TEST(LexerMalformed, UnrecognisedCharacterThrows) {
     expectThrows("2 $ 3");
 }
 
-TEST(LexerMalformed, EmptyStringProducesNoTokens) {
-    // Not necessarily an error at the LEXER level -- an empty equation is
-    // a valid (if useless) token stream. Whether it's an error is a
-    // decision for the PARSER, which will see zero tokens and can decide
-    // what that means. Adjust this test if you decided the lexer itself
-    // should reject empty input.
+TEST(LexerMalformed, EmptyStringProducesJustEndToken) {
+    // Not an error at the LEXER level -- an empty equation is a valid
+    // (if useless) token stream, just the END sentinel with nothing
+    // before it. Whether that's an error is the PARSER's decision (it'll
+    // see END immediately and can decide what that means).
     auto tokens = Lexer::tokenise("");
-    EXPECT_EQ(tokens.size(), 0);
+    ASSERT_EQ(tokens.size(), 1);
+    EXPECT_EQ(tokens[0].type, TokenType::END);
 }
 
 TEST(LexerMalformed, TrailingBackslashThrows) {
